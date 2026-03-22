@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { BackendWebSocket } from "@/components/BackendWebSocket";
 
 export const metadata: Metadata = {
   title: "RoboRebut Coach",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased min-h-screen">{children}</body>
+      <body className="antialiased min-h-screen">
+        <BackendWebSocket />
+        {children}
+      </body>
     </html>
   );
 }

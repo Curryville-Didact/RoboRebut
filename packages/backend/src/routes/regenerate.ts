@@ -1,10 +1,9 @@
 /**
- * rebuttal.ts — Phase 2.3 (updated from 2.2)
+ * regenerate.ts — Phase 2.3
  *
- * POST /api/rebuttal
- * Accepts an analysis payload (from Phase 2.1 pipeline or manual call).
- * Returns a FormattedResponse (3 ranked rebuttals + delivery metadata).
- * Persists every generated rebuttal set to PostgreSQL via Prisma.
+ * POST /api/regenerate
+ * Re-runs rebuttal generation with an optional tone_override or strategy_override.
+ * Returns a FormattedResponse. Used by the frontend ToneSwitcher.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -12,11 +11,27 @@ import {
   generateRebuttals,
   type AnalysisPayload,
 } from "../services/responseGenerator.js";
-import { formatResponse } from "../services/responseFormatter.js";
+import {
+  formatResponse,
+  type FormattedResponse,
+} from "../services/responseFormatter.js";
 
-export async function rebuttalRoutes(fastify: FastifyInstance) {
-  fastify.post<{ Body: AnalysisPayload & { tone_override?: string } }>(
-    "/api/rebuttal",
+type RegenerateBody = {
+  raw_input: string;
+  category?: string;
+  intent?: string;
+  emotional_tone?: string;
+  urgency?: string;
+  confidence?: number;
+  signals?: string[];
+  tone_override?: string;
+  strategy_override?: string;
+  session_id?: string;
+};
+
+export async function regenerateRoutes(fastify: FastifyInstance) {
+  fastify.post<{ Body: RegenerateBody }>(
+    "/api/regenerate",
     async (request, reply) => {
       const body = request.body;
 
@@ -27,7 +42,6 @@ export async function rebuttalRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Normalise category — fall back to "other"
       const payload: AnalysisPayload = {
         raw_input: body.raw_input.trim(),
         category: body.category ?? "other",
@@ -39,12 +53,18 @@ export async function rebuttalRoutes(fastify: FastifyInstance) {
         tone_override: body.tone_override,
       };
 
-      // Generate rebuttals via Claude
-      const output = await generateRebuttals(payload);
+      // Generate rebuttals via Claude (with tone_override baked into prompt)
+      const rebuttals = await generateRebuttals(payload);
 
-      // Persist to PostgreSQL
+      // Format into structured delivery package
+      const formatted: FormattedResponse = formatResponse(rebuttals, payload, {
+        mode: "suggestion",
+        session_id: body.session_id,
+      });
+
+      // Persist best-effort — never fail the request on DB error
       try {
-        const [r1, r2, r3] = output.rebuttals;
+        const [r1, r2, r3] = rebuttals.rebuttals;
         await fastify.prisma.rebuttal.create({
           data: {
             raw_input: payload.raw_input,
@@ -55,17 +75,15 @@ export async function rebuttalRoutes(fastify: FastifyInstance) {
             rebuttal_1: r1?.text ?? "",
             rebuttal_2: r2?.text ?? "",
             rebuttal_3: r3?.text ?? "",
-            rebuttals_json: output as unknown as object,
+            rebuttals_json: rebuttals as unknown as object,
             confidence: payload.confidence ?? null,
           },
         });
       } catch (dbErr) {
-        // Log but don't fail the request — user gets rebuttals regardless
-        fastify.log.error({ err: dbErr }, "Failed to persist rebuttal to DB");
+        fastify.log.error({ err: dbErr }, "regenerate: failed to persist rebuttal to DB");
       }
 
-      // Return structured FormattedResponse instead of raw RebuttalOutput
-      return reply.send(formatResponse(output, payload, { mode: "suggestion" }));
+      return reply.send(formatted);
     }
   );
 }

@@ -14,6 +14,7 @@ export interface AnalysisPayload {
   urgency?: string;       // low, medium, high
   confidence?: number;    // 0–1
   signals?: string[];
+  tone_override?: string; // consultative, assertive, friendly, urgent, analytical, empathetic, direct, social-proof, challenger
 }
 
 export interface RebuttalOption {
@@ -97,6 +98,9 @@ export function buildRebuttalMessages(payload: AnalysisPayload): {
   const guidance = getCategoryGuidance(payload.category);
   const tone = toneHint(payload.emotional_tone);
   const urgency = urgencyHint(payload.urgency);
+  const toneOverrideLine = payload.tone_override
+    ? `Tone override requested by user: ${payload.tone_override}. All 3 rebuttals must reflect this tone. The "tone" field in each rebuttal must match this override.`
+    : "";
 
   const system = `You are RoboRebut — a real-time sales objection handling engine built for professional closers.
 
@@ -114,6 +118,7 @@ ${guidance}
 ## Tone and Urgency
 ${tone}
 ${urgency}
+${toneOverrideLine}
 
 ## Output Rules
 - Return ONLY valid JSON. No markdown. No explanation outside the JSON.

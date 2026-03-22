@@ -7,7 +7,9 @@ import redisPlugin from "./plugins/redis.js";
 import websocketPlugin from "./plugins/websocket.js";
 import { runObjectionPipeline } from "./lib/runObjectionPipeline.js";
 import { rebuttalRoutes } from "./routes/rebuttal.js";
+import { regenerateRoutes } from "./routes/regenerate.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
+import { formatResponse } from "./services/responseFormatter.js";
 
 export async function createServer(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -23,7 +25,16 @@ export async function createServer(): Promise<FastifyInstance> {
   app.decorate("config", config);
 
   await app.register(cors, {
-    origin: config.frontendUrl,
+    origin: (origin, cb) => {
+      if (!origin) {
+        return cb(null, true);
+      }
+      if (config.corsAllowedOrigins.includes(origin)) {
+        return cb(null, true);
+      }
+      app.log.warn({ origin }, "CORS: origin not allowed");
+      return cb(null, false);
+    },
     credentials: true,
   });
 
@@ -34,6 +45,7 @@ export async function createServer(): Promise<FastifyInstance> {
   app.get("/health", async () => ({ ok: true }));
 
   await app.register(rebuttalRoutes);
+  await app.register(regenerateRoutes);
 
   app.get(
     "/api/me",
@@ -133,11 +145,14 @@ export async function createServer(): Promise<FastifyInstance> {
         }
 
         // Legacy single-response event for backwards compat with existing frontend
+        // Phase 2.3: also include formatted delivery package
+        const formattedWs = formatResponse(rebuttals, analysisPayload);
         socket.send(
           JSON.stringify({
             type: "response",
             message: rebuttals.rebuttals[0]?.text ?? result.generated.reply,
             rebuttals: rebuttals.rebuttals,
+            formatted: formattedWs,
           })
         );
 
