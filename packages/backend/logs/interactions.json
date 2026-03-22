@@ -1,0 +1,1893 @@
+[
+  {
+    "input": "This is too expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: too expensive, expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around value",
+        "ask a comparison question"
+      ]
+    },
+    "output": "That’s fair — price is usually worth examining closely. What matters most is whether this solves a problem that is already costing you more than you want. What are you comparing it against right now?",
+    "score": 80,
+    "timestamp": 1773785995099
+  },
+  {
+    "input": "I kinda feel weird about this",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I kinda feel weird about this\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773786065192
+  },
+  {
+    "input": "I kinda feel weird about this",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I kinda feel weird about this\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773786094098
+  },
+  {
+    "input": "I kinda feel weird about this",
+    "classification": {
+      "type": "trust",
+      "confidence": 0.91,
+      "signals": [
+        "trust skepticism detected",
+        "credibility challenge",
+        "matched: kinda feel weird, feel weird"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "assertive",
+      "structure": [
+        "acknowledge skepticism",
+        "surface the real concern",
+        "answer with specificity"
+      ]
+    },
+    "output": "Fair enough — skepticism is reasonable. Usually the fastest way to clear that up is not to stay broad, but to get specific. What exactly feels uncertain, off, or risky to you right now?",
+    "score": 81,
+    "timestamp": 1773791335570
+  },
+  {
+    "input": "This seems too expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: too expensive, expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773795152498
+  },
+  {
+    "input": "Im not interesyed",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Im not interesyed\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773795293512
+  },
+  {
+    "input": "This sounds like a scam",
+    "classification": {
+      "type": "trust",
+      "confidence": 0.91,
+      "signals": [
+        "trust skepticism detected",
+        "credibility challenge",
+        "matched: sounds like a scam"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "assertive",
+      "structure": [
+        "acknowledge skepticism",
+        "surface the real concern",
+        "answer with specificity"
+      ]
+    },
+    "output": "Fair enough — skepticism is reasonable. Usually the fastest way to clear that up is not to stay broad, but to get specific. What exactly feels uncertain, off, or risky to you right now?",
+    "score": 81,
+    "timestamp": 1773795451312
+  },
+  {
+    "input": "we already work with someone else",
+    "classification": {
+      "type": "competitor",
+      "confidence": 0.92,
+      "signals": [
+        "incumbent provider detected",
+        "competitor / existing solution",
+        "matched: we already work with"
+      ]
+    },
+    "strategy": {
+      "approach": "challenge",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge incumbent solution",
+        "test satisfaction level",
+        "probe for gaps or tradeoffs"
+      ]
+    },
+    "output": "That’s useful to know. Staying with an existing provider can make sense if they’re genuinely delivering what you need. The real question is whether you’re satisfied, or just settled. What, if anything, do you wish your current solution handled better?",
+    "score": 81,
+    "timestamp": 1773795687893
+  },
+  {
+    "input": "send me something",
+    "classification": {
+      "type": "brush_off",
+      "confidence": 0.87,
+      "signals": [
+        "brush-off language detected",
+        "engagement avoidance",
+        "matched: send me something"
+      ]
+    },
+    "strategy": {
+      "approach": "challenge",
+      "tone": "friendly",
+      "structure": [
+        "acknowledge resistance",
+        "avoid generic follow-up",
+        "ask one low-friction qualifying question"
+      ]
+    },
+    "output": "I can send information, but I don’t want to send something generic that gets ignored five minutes later. Before I do that, what is the one thing you would need to see to decide whether this is even worth your attention?",
+    "score": 81,
+    "timestamp": 1773795794089
+  },
+  {
+    "input": "ill get back to you",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"ill get back to you\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773796094552
+  },
+  {
+    "input": "we are good",
+    "classification": {
+      "type": "no_need",
+      "confidence": 0.9,
+      "signals": [
+        "no-need language detected",
+        "problem importance denied",
+        "matched: we are good"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge current view",
+        "question whether the problem is fully solved",
+        "surface hidden cost or missed opportunity"
+      ]
+    },
+    "output": "That may be true — but usually when someone says they don’t need something, it means the problem feels small, already handled, or not urgent enough. Which of those is actually true in your case?",
+    "score": 81,
+    "timestamp": 1773796208281
+  },
+  {
+    "input": "too exspensive",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"too exspensive\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773800304569
+  },
+  {
+    "input": "expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773800778020
+  },
+  {
+    "input": "cost too much",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: cost too much"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773800909719
+  },
+  {
+    "input": "what's the price",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: price"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773800950370
+  },
+  {
+    "input": "budget",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: budget"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773800984914
+  },
+  {
+    "input": "out of budget",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: budget, out of budget"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773801014467
+  },
+  {
+    "input": "more than I want to spend",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: more than i want to spend"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773801076895
+  },
+  {
+    "input": "too expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: too expensive, expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773801094999
+  },
+  {
+    "input": "too expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: too expensive, expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773801117276
+  },
+  {
+    "input": "not right now",
+    "classification": {
+      "type": "timing",
+      "confidence": 0.9,
+      "signals": [
+        "timing delay language detected",
+        "decision deferred",
+        "matched: not right now"
+      ]
+    },
+    "strategy": {
+      "approach": "validate_then_shift",
+      "tone": "friendly",
+      "structure": [
+        "acknowledge timing concern",
+        "lower pressure",
+        "anchor to a realistic next step"
+      ]
+    },
+    "output": "Understood — timing matters. I’m not trying to force this at the wrong moment. What would make this conversation more relevant: later this week, next month, or after a specific milestone?",
+    "score": 81,
+    "timestamp": 1773801170813
+  },
+  {
+    "input": "price",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: price"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773801744359
+  },
+  {
+    "input": "I just don't have the budget for this right now",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: budget"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773802126233
+  },
+  {
+    "input": "My wife would kill me if I spent that",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"My wife would kill me if I spent that\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802170843
+  },
+  {
+    "input": "We're in the middle of a bunch of stuff right now",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"We're in the middle of a bunch of stuff right now\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802278062
+  },
+  {
+    "input": "Honestly I'm just not that motivated to change what we're doing",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Honestly I'm just not that motivated to change what we're doing\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802352853
+  },
+  {
+    "input": "I'm not really sure this applies to our situation",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I'm not really sure this applies to our situation\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802387116
+  },
+  {
+    "input": "We're doing fine without it",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"We're doing fine without it\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802478644
+  },
+  {
+    "input": "Shoot me an email and I'll take a look",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Shoot me an email and I'll take a look\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802618054
+  },
+  {
+    "input": "Things are crazy this month, try me in the fall",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Things are crazy this month, try me in the fall\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802657220
+  },
+  {
+    "input": "We're actually about to go on vacation",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"We're actually about to go on vacation\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773802683622
+  },
+  {
+    "input": "I just don't have the budget for this right now",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: budget"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773804060815
+  },
+  {
+    "input": "I'd have to run this by the whole team",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I'd have to run this by the whole team\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773837807494
+  },
+  {
+    "input": "too expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: too expensive, expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773838641899
+  },
+  {
+    "input": "this costs a lot",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"this costs a lot\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773838668477
+  },
+  {
+    "input": "not in my budget",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: budget"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773838701193
+  },
+  {
+    "input": "“price is high",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: price"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773838743375
+  },
+  {
+    "input": "My margins are too slim for this",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"My margins are too slim for this\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773838797329
+  },
+  {
+    "input": "This isn't really my call",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"This isn't really my call\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773838860958
+  },
+  {
+    "input": "We tried something like this before and it didn't work",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"We tried something like this before and it didn't work\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773838896478
+  },
+  {
+    "input": "How long have you guys been around?",
+    "classification": {
+      "type": "confusion",
+      "confidence": 0.68,
+      "signals": [
+        "question detected",
+        "fallback to confusion"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge confusion",
+        "simplify the explanation",
+        "check which part is unclear"
+      ]
+    },
+    "output": "No problem — let’s simplify it. At a basic level, this is meant to make objection handling more structured, more consistent, and easier to act on. Which part feels most unclear right now?",
+    "score": 81,
+    "timestamp": 1773838925202
+  },
+  {
+    "input": "I can’t afford this right now",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I can’t afford this right now\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773839046826
+  },
+  {
+    "input": "too expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: too expensive, expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773840408310
+  },
+  {
+    "input": "I can't afford this right now",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: can't afford"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773840547992
+  },
+  {
+    "input": "The factor rate is too expensive",
+    "classification": {
+      "type": "price",
+      "confidence": 0.93,
+      "signals": [
+        "cost language detected",
+        "budget/pricing concern",
+        "matched: too expensive, expensive"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge cost concern",
+        "reframe around cost of inaction",
+        "ask comparison question"
+      ]
+    },
+    "output": "That’s fair — price deserves scrutiny. But most people do not lose money on price alone; they lose money on the problem staying unresolved. What are you comparing this against right now, and what is that costing you today?",
+    "score": 81,
+    "timestamp": 1773844225005
+  },
+  {
+    "input": "Why pay draw fees if I can just use my card?",
+    "classification": {
+      "type": "confusion",
+      "confidence": 0.68,
+      "signals": [
+        "question detected",
+        "fallback to confusion"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge confusion",
+        "simplify the explanation",
+        "check which part is unclear"
+      ]
+    },
+    "output": "No problem — let’s simplify it. At a basic level, this is meant to make objection handling more structured, more consistent, and easier to act on. Which part feels most unclear right now?",
+    "score": 81,
+    "timestamp": 1773844266747
+  },
+  {
+    "input": "I can get a bank loan cheaper",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I can get a bank loan cheaper\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773844341328
+  },
+  {
+    "input": "The factor rate is to high-why pay 1.4 when a bank's cheaper?",
+    "classification": {
+      "type": "confusion",
+      "confidence": 0.68,
+      "signals": [
+        "question detected",
+        "fallback to confusion"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge confusion",
+        "simplify the explanation",
+        "check which part is unclear"
+      ]
+    },
+    "output": "No problem — let’s simplify it. At a basic level, this is meant to make objection handling more structured, more consistent, and easier to act on. Which part feels most unclear right now?",
+    "score": 81,
+    "timestamp": 1773844697701
+  },
+  {
+    "input": "I've heard MCA's are predatory-people get trapped",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I've heard MCA's are predatory-people get trapped\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773844830868
+  },
+  {
+    "input": "The factor rate is too high",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"The factor rate is too high\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773855587995
+  },
+  {
+    "input": "I don't need it I have savings",
+    "classification": {
+      "type": "no_need",
+      "confidence": 0.9,
+      "signals": [
+        "no-need language detected",
+        "problem importance denied",
+        "matched: don't need it"
+      ]
+    },
+    "strategy": {
+      "approach": "reframe",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge current view",
+        "question whether the problem is fully solved",
+        "surface hidden cost or missed opportunity"
+      ]
+    },
+    "output": "That may be true — but usually when someone says they don’t need something, it means the problem feels small, already handled, or not urgent enough. Which of those is actually true in your case?",
+    "score": 81,
+    "timestamp": 1773855915534
+  },
+  {
+    "input": "My partner says no",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"My partner says no\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773856086968
+  },
+  {
+    "input": "Too much paperwork",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Too much paperwork\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773856388846
+  },
+  {
+    "input": "I've heard MCA's are predatory-people get trapped",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I've heard MCA's are predatory-people get trapped\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773856474718
+  },
+  {
+    "input": "I'll go back to my bank first",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I'll go back to my bank first\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773858647356
+  },
+  {
+    "input": "I don't want daily payments coming out of my account",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I don't want daily payments coming out of my account\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773858782415
+  },
+  {
+    "input": "I already have an MCA and I can't on any more debt",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I already have an MCA and I can't on any more debt\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773858841605
+  },
+  {
+    "input": "My revenue isn't consistent enough to qualify",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"My revenue isn't consistent enough to qualify\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773858929715
+  },
+  {
+    "input": "I don't want to sign a personal guarantee",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I don't want to sign a personal guarantee\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859030365
+  },
+  {
+    "input": "I don't need capital right now",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I don't need capital right now\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859092223
+  },
+  {
+    "input": "The draw-down requirments",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"The draw-down requirments\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859175828
+  },
+  {
+    "input": "The draw-down requirements and reporting paperwork are too burdensome",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"The draw-down requirements and reporting paperwork are too burdensome\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859249670
+  },
+  {
+    "input": "Interest rates are too high right now",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Interest rates are too high right now\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859306850
+  },
+  {
+    "input": "I'm worried about taking on variable rate exposure",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I'm worried about taking on variable rate exposure\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859387549
+  },
+  {
+    "input": "I don't want to tie up equity in a commercial property",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I don't want to tie up equity in a commercial property\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859505540
+  },
+  {
+    "input": "Rates are too high",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Rates are too high\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859554860
+  },
+  {
+    "input": "The property needs too much renovation to finance",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"The property needs too much renovation to finance\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859657296
+  },
+  {
+    "input": "Im not sure the property will appraise high enough",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Im not sure the property will appraise high enough\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859738087
+  },
+  {
+    "input": "I don't want to give up equity in my company",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I don't want to give up equity in my company\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773859857665
+  },
+  {
+    "input": "Are you going to run my credit?",
+    "classification": {
+      "type": "confusion",
+      "confidence": 0.68,
+      "signals": [
+        "question detected",
+        "fallback to confusion"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge confusion",
+        "simplify the explanation",
+        "check which part is unclear"
+      ]
+    },
+    "output": "No problem — let’s simplify it. At a basic level, this is meant to make objection handling more structured, more consistent, and easier to act on. Which part feels most unclear right now?",
+    "score": 81,
+    "timestamp": 1773881470289
+  },
+  {
+    "input": "I got to figure out if I can afford this",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I got to figure out if I can afford this\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773881780799
+  },
+  {
+    "input": "I'm not sure I can do it",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I'm not sure I can do it\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773881918407
+  },
+  {
+    "input": "The property needs too much renovation to finance",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"The property needs too much renovation to finance\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773882091651
+  },
+  {
+    "input": "I don't want investors involved in operational decisions",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I don't want investors involved in operational decisions\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773882276770
+  },
+  {
+    "input": "Our revenue numbers aren't where they need to be for a raise",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"Our revenue numbers aren't where they need to be for a raise\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773882435318
+  },
+  {
+    "input": "Call me next month",
+    "classification": {
+      "type": "timing",
+      "confidence": 0.9,
+      "signals": [
+        "timing delay language detected",
+        "decision deferred",
+        "matched: next month"
+      ]
+    },
+    "strategy": {
+      "approach": "validate_then_shift",
+      "tone": "friendly",
+      "structure": [
+        "acknowledge timing concern",
+        "lower pressure",
+        "anchor to a realistic next step"
+      ]
+    },
+    "output": "Understood — timing matters. I’m not trying to force this at the wrong moment. What would make this conversation more relevant: later this week, next month, or after a specific milestone?",
+    "score": 81,
+    "timestamp": 1773882541429
+  },
+  {
+    "input": "We're not in a hot sector right now-Investors won't be interested",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"We're not in a hot sector right now-Investors won't be interested\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773882687889
+  },
+  {
+    "input": "I need to think it over",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"I need to think it over\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773883523383
+  },
+  {
+    "input": "We need to do more research",
+    "classification": {
+      "type": "hidden",
+      "confidence": 0.5,
+      "signals": [
+        "no explicit objection pattern matched"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge resistance",
+        "clarify intent",
+        "move conversation forward"
+      ]
+    },
+    "output": "I understand your concern. Let’s clarify what’s behind \"We need to do more research\" so I can respond more precisely.",
+    "score": 80,
+    "timestamp": 1773883565263
+  },
+  {
+    "input": "How much is this going to cost me?",
+    "classification": {
+      "type": "confusion",
+      "confidence": 0.68,
+      "signals": [
+        "question detected",
+        "fallback to confusion"
+      ]
+    },
+    "strategy": {
+      "approach": "clarify",
+      "tone": "consultative",
+      "structure": [
+        "acknowledge confusion",
+        "simplify the explanation",
+        "check which part is unclear"
+      ]
+    },
+    "output": "No problem — let’s simplify it. At a basic level, this is meant to make objection handling more structured, more consistent, and easier to act on. Which part feels most unclear right now?",
+    "score": 81,
+    "timestamp": 1773883612125
+  },
+  {
+    "input": "Now is not a good time",
+    "classification": {
+      "type": "timing",
+      "confidence": 0.9,
+      "signals": [
+        "timing delay language detected",
+        "decision deferred",
+        "matched: not a good time"
+      ]
+    },
+    "strategy": {
+      "approach": "validate_then_shift",
+      "tone": "friendly",
+      "structure": [
+        "acknowledge timing concern",
+        "lower pressure",
+        "anchor to a realistic next step"
+      ]
+    },
+    "output": "Understood — timing matters. I’m not trying to force this at the wrong moment. What would make this conversation more relevant: later this week, next month, or after a specific milestone?",
+    "score": 81,
+    "timestamp": 1773883923269
+  },
+  {
+    "input": "I'm too busy",
+    "classification": {
+      "type": "timing",
+      "confidence": 0.9,
+      "signals": [
+        "timing delay language detected",
+        "decision deferred",
+        "matched: too busy"
+      ]
+    },
+    "strategy": {
+      "approach": "validate_then_shift",
+      "tone": "friendly",
+      "structure": [
+        "acknowledge timing concern",
+        "lower pressure",
+        "anchor to a realistic next step"
+      ]
+    },
+    "output": "Understood — timing matters. I’m not trying to force this at the wrong moment. What would make this conversation more relevant: later this week, next month, or after a specific milestone?",
+    "score": 81,
+    "timestamp": 1773886450621
+  },
+  {
+    "input": "I need to think about it",
+    "classification": {
+      "type": "timing",
+      "confidence": 0.9,
+      "signals": [
+        "timing delay language detected",
+        "decision deferred",
+        "matched: i need to think about it"
+      ]
+    },
+    "strategy": {
+      "approach": "validate_then_shift",
+      "tone": "friendly",
+      "structure": [
+        "acknowledge timing concern",
+        "lower pressure",
+        "anchor to a realistic next step"
+      ]
+    },
+    "output": "Understood — timing matters. I’m not trying to force this at the wrong moment. What would make this conversation more relevant: later this week, next month, or after a specific milestone?",
+    "score": 81,
+    "timestamp": 1774152370284
+  }
+]

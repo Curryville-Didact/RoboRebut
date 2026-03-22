@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  clerkId     String    @unique
+  email       String?
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  calls       Call[]
+}
+
+model Workspace {
+  id        String             @id @default(cuid())
+  name      String
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  users     User[]
+  documents KnowledgeDocument[]
+  calls     Call[]
+}
+
+model KnowledgeDocument {
+  id        String          @id @default(cuid())
+  workspaceId String
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name      String
+  path      String
+  mimeType  String?
+  createdAt DateTime        @default(now())
+  chunks    KnowledgeChunk[]
+}
+
+model KnowledgeChunk {
+  id         String           @id @default(cuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String
+  embedding  Unsupported("vector(1536)")?
+  startIndex Int?
+  endIndex   Int?
+  createdAt  DateTime        @default(now())
+
+  @@index([documentId])
+}
+
+model Call {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  twilioCallSid  String?
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  status         String    @default("active")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  segments       TranscriptSegment[]
+  suggestions    Suggestion[]
+  summary        Summary?
+}
+
+model TranscriptSegment {
+  id        String   @id @default(cuid())
+  callId    String
+  call      Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  speaker   String
+  text      String
+  isFinal   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([callId])
+}
+
+model Suggestion {
+  id                 String   @id @default(cuid())
+  callId             String
+  call               Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  transcriptSegmentId String?
+  intent             String
+  confidence         Float?
+  response1          String
+  response2          String
+  response3          String
+  followUp           String
+  knowledgeSnippet   String?
+  createdAt          DateTime @default(now())
+
+  @@index([callId])
+}
+
+model Summary {
+  id            String   @id @default(cuid())
+  callId        String   @unique
+  call          Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  overview      String
+  keyTopics     Json?
+  objections    Json?
+  actionItems   Json?
+  followUpDraft String?
+  sentiment     String?
+  createdAt     DateTime @default(now())
+}
+
+// Phase 2.2 — Response Generation Engine
+model Rebuttal {
+  id            String   @id @default(cuid())
+  raw_input     String
+  category      String
+  intent        String?
+  emotional_tone String?
+  urgency       String?
+  rebuttal_1    String
+  rebuttal_2    String
+  rebuttal_3    String
+  rebuttals_json Json?   // Full structured output including tone, framework, confidence
+  confidence    Float?
+  created_at    DateTime @default(now())
+
+  @@index([category])
+  @@index([created_at])
+}
