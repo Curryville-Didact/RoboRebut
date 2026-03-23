@@ -1,13 +1,13 @@
 /**
  * Single source of truth for backend URLs (HTTP + WebSocket).
- * Defaults match local dev: backend on 4001, same host for WS.
+ * Defaults match local dev: backend on 3001, same host for WS.
  */
 
 const trimSlash = (s: string) => s.replace(/\/$/, "");
 
-/** e.g. http://127.0.0.1:4001 */
+/** e.g. http://127.0.0.1:3001 */
 export const API_URL = trimSlash(
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4001"
+  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3001"
 );
 
 function httpBaseToWsBase(httpUrl: string): string {

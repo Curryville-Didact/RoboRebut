@@ -33,14 +33,14 @@ function corsAllowedOrigins(): string[] {
       .map((s) => s.trim())
       .filter(Boolean);
   }
-  const primary = envOptional("FRONTEND_URL") ?? "http://localhost:3001";
+  const primary = envOptional("FRONTEND_URL") ?? "http://localhost:3000";
   return Array.from(new Set([primary, ...DEFAULT_LOCAL_DEV_ORIGINS]));
 }
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
-  port: Number(process.env.BACKEND_PORT || process.env.PORT || 4001),
-  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3001",
+  port: Number(process.env.BACKEND_PORT || process.env.PORT || 3001),
+  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
   corsAllowedOrigins: corsAllowedOrigins(),
   databaseUrl: env("DATABASE_URL"),
   redisUrl: env("REDIS_URL"),
