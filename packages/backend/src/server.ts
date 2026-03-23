@@ -5,9 +5,13 @@ import { config } from "./config.js";
 import prismaPlugin from "./plugins/prisma.js";
 import redisPlugin from "./plugins/redis.js";
 import websocketPlugin from "./plugins/websocket.js";
+import supabaseAuthPlugin from "./plugins/supabaseAuth.js";
 import { runObjectionPipeline } from "./lib/runObjectionPipeline.js";
 import { rebuttalRoutes } from "./routes/rebuttal.js";
 import { regenerateRoutes } from "./routes/regenerate.js";
+import { conversationRoutes } from "./routes/conversations.js";
+import { messageRoutes } from "./routes/messages.js";
+import { savedResponseRoutes } from "./routes/savedResponses.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 
@@ -38,6 +42,7 @@ export async function createServer(): Promise<FastifyInstance> {
     credentials: true,
   });
 
+  await app.register(supabaseAuthPlugin);
   await app.register(prismaPlugin);
   await app.register(redisPlugin);
   await app.register(websocketPlugin);
@@ -46,6 +51,9 @@ export async function createServer(): Promise<FastifyInstance> {
 
   await app.register(rebuttalRoutes);
   await app.register(regenerateRoutes);
+  await app.register(conversationRoutes, { prefix: "/api" });
+  await app.register(messageRoutes, { prefix: "/api" });
+  await app.register(savedResponseRoutes, { prefix: "/api" });
 
   app.get(
     "/api/me",
