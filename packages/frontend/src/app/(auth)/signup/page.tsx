@@ -12,24 +12,39 @@ export default function SignupPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    // Guard: don't fire if fields are empty (e.g. autofill edge cases)
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    if (!trimmedEmail || !trimmedPassword) return;
+
     setLoading(true);
     setError(null);
 
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
 
-    const { error: signUpError } = await supabase.auth.signUp({ email, password });
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password: trimmedPassword,
+      });
 
-    if (signUpError) {
-      setError(signUpError.message);
+      if (signUpError) {
+        setError(signUpError.message);
+        return;
+      }
+
+      setDone(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong";
+      console.error("[signup] unexpected error:", err);
+      setError(msg);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setDone(true);
-    setLoading(false);
   }
 
   if (done) {
@@ -45,29 +60,43 @@ export default function SignupPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg border p-6">
+      {/* autoComplete="off" on the form prevents Safari from treating this
+          as a login form and auto-submitting saved credentials */}
+      <form
+        onSubmit={handleSubmit}
+        autoComplete="off"
+        className="w-full max-w-sm space-y-4 rounded-lg border p-6"
+      >
         <h1 className="text-2xl font-semibold">Sign up</h1>
 
         <div>
-          <label className="mb-1 block text-sm">Email</label>
+          <label className="mb-1 block text-sm" htmlFor="signup-email">
+            Email
+          </label>
           <input
+            id="signup-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
             className="w-full rounded border px-3 py-2"
             placeholder="you@example.com"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-sm">Password</label>
+          <label className="mb-1 block text-sm" htmlFor="signup-password">
+            Password
+          </label>
           <input
+            id="signup-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             minLength={6}
             required
+            autoComplete="new-password"
             className="w-full rounded border px-3 py-2"
             placeholder="At least 6 characters"
           />
