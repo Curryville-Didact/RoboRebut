@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
 export default function SignupPage() {
@@ -10,21 +10,49 @@ export default function SignupPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Diagnostic: log any unhandled errors on this page so we can trace the source
+  useEffect(() => {
+    function handleError(event: ErrorEvent) {
+      console.error("[signup] unhandled error:", event.message, event.filename, event.lineno);
+    }
+    function handleUnhandledRejection(event: PromiseRejectionEvent) {
+      console.error("[signup] unhandled promise rejection:", event.reason);
+    }
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    };
+  }, []);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    // Guard: don't fire if fields are empty (e.g. autofill edge cases)
     const trimmedEmail = email.trim();
     const trimmedPassword = password.trim();
-    if (!trimmedEmail || !trimmedPassword) return;
+    if (!trimmedEmail || !trimmedPassword) {
+      console.warn("[signup] handleSubmit blocked — empty fields");
+      return;
+    }
 
+    console.log("[signup] handleSubmit fired by user");
     setLoading(true);
     setError(null);
 
     try {
+      // Disable all background auth activity — this page only needs signUp(),
+      // not session detection, token refresh, or URL parsing.
       const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          auth: {
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+            persistSession: false,
+          },
+        }
       );
 
       const { error: signUpError } = await supabase.auth.signUp({
@@ -33,6 +61,7 @@ export default function SignupPage() {
       });
 
       if (signUpError) {
+        console.error("[signup] signUp error:", signUpError);
         setError(signUpError.message);
         return;
       }
@@ -40,7 +69,7 @@ export default function SignupPage() {
       setDone(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong";
-      console.error("[signup] unexpected error:", err);
+      console.error("[signup] caught unexpected error:", err);
       setError(msg);
     } finally {
       setLoading(false);
@@ -60,8 +89,6 @@ export default function SignupPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
-      {/* autoComplete="off" on the form prevents Safari from treating this
-          as a login form and auto-submitting saved credentials */}
       <form
         onSubmit={handleSubmit}
         autoComplete="off"
@@ -102,7 +129,9 @@ export default function SignupPage() {
           />
         </div>
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {error ? (
+          <p className="text-sm text-red-600">{error}</p>
+        ) : null}
 
         <button
           type="submit"
