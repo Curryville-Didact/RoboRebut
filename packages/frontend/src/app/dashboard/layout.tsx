@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { BackendWebSocket } from "@/components/BackendWebSocket";
 
 export default async function DashboardLayout({
   children,
@@ -51,6 +52,9 @@ export default async function DashboardLayout({
 
       {/* Main content */}
       <main className="flex-1 overflow-auto p-8">{children}</main>
+
+      {/* Backend WS — dashboard only, not auth pages */}
+      <BackendWebSocket />
     </div>
   );
 }
