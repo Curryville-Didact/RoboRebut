@@ -1,25 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createBrowserClient } from "@supabase/ssr";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signUp({ email, password });
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
 
-    if (error) {
-      setError(error.message);
+    const { error: signUpError } = await supabase.auth.signUp({ email, password });
+
+    if (signUpError) {
+      setError(signUpError.message);
       setLoading(false);
       return;
     }
@@ -30,72 +34,55 @@ export default function SignupPage() {
 
   if (done) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="w-full max-w-sm space-y-4 rounded-xl border border-white/20 p-8 text-center">
-          <h1 className="text-2xl font-bold">Check your email</h1>
-          <p className="text-gray-400">
-            We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account.
-          </p>
-          <a href="/login" className="block text-sm text-white underline">
-            Back to sign in
-          </a>
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <div className="w-full max-w-sm rounded-lg border p-6 text-center">
+          <h1 className="mb-2 text-2xl font-semibold">Check your email</h1>
+          <p>We sent a confirmation link to {email}.</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black text-white">
-      <div className="w-full max-w-sm space-y-6 rounded-xl border border-white/20 p-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">RoboRebut</h1>
-          <p className="mt-1 text-sm text-gray-400">Create your account</p>
+    <main className="flex min-h-screen items-center justify-center p-6">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg border p-6">
+        <h1 className="text-2xl font-semibold">Sign up</h1>
+
+        <div>
+          <label className="mb-1 block text-sm">Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="w-full rounded border px-3 py-2"
+            placeholder="you@example.com"
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm text-gray-400">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-lg border border-white/20 bg-transparent px-4 py-2.5 text-white outline-none placeholder:text-gray-600 focus:border-white/60"
-              placeholder="you@example.com"
-            />
-          </div>
+        <div>
+          <label className="mb-1 block text-sm">Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={6}
+            required
+            className="w-full rounded border px-3 py-2"
+            placeholder="At least 6 characters"
+          />
+        </div>
 
-          <div>
-            <label className="mb-1 block text-sm text-gray-400">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              className="w-full rounded-lg border border-white/20 bg-transparent px-4 py-2.5 text-white outline-none placeholder:text-gray-600 focus:border-white/60"
-              placeholder="••••••••"
-            />
-          </div>
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg border border-white/60 py-2.5 font-semibold transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? "Creating account…" : "Create Account"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-400">
-          Already have an account?{" "}
-          <a href="/login" className="text-white underline">
-            Sign in
-          </a>
-        </p>
-      </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-60"
+        >
+          {loading ? "Creating..." : "Create account"}
+        </button>
+      </form>
     </main>
   );
 }
