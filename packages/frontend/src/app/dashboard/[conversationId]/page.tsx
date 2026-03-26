@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { API_URL } from "@/lib/env";
 
@@ -40,12 +40,13 @@ async function waitForSessionAccessToken(): Promise<string | null> {
 
 export default function ConversationDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const conversationId = params.conversationId as string;
 
-  // Tracks the conversationId that the current in-flight send belongs to.
-  // If the user navigates away before the response arrives, we discard it.
   const inflightConvRef = useRef<string | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const isFirstScrollRef = useRef(true);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -55,19 +56,26 @@ export default function ConversationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
 
-  // --- Load: reset state on every conversationId change, then fetch ---
+  // Rename state
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  // Delete state
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // --- Load ---
   useEffect(() => {
-    // Immediately clear stale state from previous conversation.
-    // User never sees the wrong thread's messages while the new one loads.
     setConversation(null);
     setMessages([]);
     setError(null);
     setPageLoading(true);
     setSaveStatus({});
-    // If a send was in-flight for a different conversation, disown it now.
-    // The send itself will complete (backend still persists) but we won't
-    // apply its response to the new conversation's message list.
+    setRenaming(false);
+    setConfirmDelete(false);
     inflightConvRef.current = null;
+    isFirstScrollRef.current = true;
 
     let cancelled = false;
 
@@ -81,7 +89,6 @@ export default function ConversationDetailPage() {
         return;
       }
 
-      // Step 1: conversation meta
       let metaRes: Response;
       try {
         metaRes = await fetch(`${API_URL}/api/conversations/${conversationId}`, {
@@ -107,7 +114,6 @@ export default function ConversationDetailPage() {
       if (cancelled) return;
       setConversation(conv);
 
-      // Step 2: messages — only if meta succeeded
       let msgsRes: Response;
       try {
         msgsRes = await fetch(
@@ -132,7 +138,6 @@ export default function ConversationDetailPage() {
 
       const msgs = (await msgsRes.json()) as MessageRow[];
       if (cancelled) return;
-
       setMessages(Array.isArray(msgs) ? msgs : []);
       setPageLoading(false);
     }
@@ -141,10 +146,7 @@ export default function ConversationDetailPage() {
     return () => { cancelled = true; };
   }, [conversationId]);
 
-  // --- Scroll: one effect, one responsibility ---
-  // Fires when pageLoading flips false (initial load) or messages array grows (new send).
-  // Uses a ref to distinguish initial load (instant) from incremental (smooth).
-  const isFirstScrollRef = useRef(true);
+  // --- Scroll ---
   useEffect(() => {
     if (pageLoading || messages.length === 0) return;
     const behavior: ScrollBehavior = isFirstScrollRef.current ? "instant" : "smooth";
@@ -152,19 +154,18 @@ export default function ConversationDetailPage() {
     threadEndRef.current?.scrollIntoView({ behavior });
   }, [pageLoading, messages.length]);
 
-  // Reset scroll sentinel on conversation change
+  // Focus rename input when rename mode opens
   useEffect(() => {
-    isFirstScrollRef.current = true;
-  }, [conversationId]);
+    if (renaming) {
+      renameInputRef.current?.select();
+    }
+  }, [renaming]);
 
   // --- Send ---
   async function handleSend() {
     const text = composer.trim();
-    // Prevent double-submit: block if already sending or text is empty.
     if (!text || sending) return;
 
-    // Capture the conversationId at dispatch time.
-    // If the user navigates while waiting, we compare on response.
     const sentInConv = conversationId;
     inflightConvRef.current = sentInConv;
 
@@ -175,8 +176,10 @@ export default function ConversationDetailPage() {
     try {
       const token = await waitForSessionAccessToken();
       if (!token) {
-        setError("Session expired. Please refresh the page.");
-        setComposer(text);
+        if (inflightConvRef.current === sentInConv) {
+          setError("Session expired. Please refresh the page.");
+          setComposer(text);
+        }
         return;
       }
 
@@ -193,36 +196,42 @@ export default function ConversationDetailPage() {
       try { body = await res.json(); } catch { body = null; }
 
       if (!res.ok) {
-        const msg =
-          body &&
-          typeof body === "object" &&
-          "error" in body &&
-          typeof (body as { error: unknown }).error === "string"
-            ? (body as { error: string }).error
-            : "Failed to send message";
-        // Only surface error if still on the same conversation
         if (inflightConvRef.current === sentInConv) {
+          const msg =
+            body && typeof body === "object" && "error" in body &&
+            typeof (body as { error: unknown }).error === "string"
+              ? (body as { error: string }).error
+              : "Failed to send message";
           setError(msg);
           setComposer(text);
         }
         return;
       }
 
-      const parsed = body as { userMessage?: MessageRow; assistantMessage?: MessageRow };
-
-      // Guard: discard response if user navigated to a different conversation
       if (inflightConvRef.current !== sentInConv) return;
+
+      const parsed = body as {
+        userMessage?: MessageRow;
+        assistantMessage?: MessageRow;
+        updatedTitle?: string | null;
+      };
 
       if (parsed?.userMessage && parsed?.assistantMessage) {
         setMessages((prev) => {
-          // Dedup: if the server message id already exists in the list, skip.
-          // This prevents double-append if the component re-renders mid-send.
           const existingIds = new Set(prev.map((m) => m.id));
           const toAdd = [parsed.userMessage!, parsed.assistantMessage!].filter(
             (m) => !existingIds.has(m.id)
           );
           return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
         });
+
+        // Apply auto-generated title if backend derived one.
+        // Only update local state — the DB is already updated.
+        if (parsed.updatedTitle) {
+          setConversation((prev) =>
+            prev ? { ...prev, title: parsed.updatedTitle! } : prev
+          );
+        }
       } else {
         setError("Unexpected response from server.");
         setComposer(text);
@@ -233,12 +242,98 @@ export default function ConversationDetailPage() {
         setComposer(text);
       }
     } finally {
-      // Only clear sending state if still on the same conversation.
-      // If navigated away, the new conversation's load handles its own state.
       if (inflightConvRef.current === sentInConv) {
         inflightConvRef.current = null;
         setSending(false);
       }
+    }
+  }
+
+  // --- Rename ---
+  function startRename() {
+    setRenameValue(conversation?.title ?? "");
+    setRenameError(null);
+    setRenaming(true);
+  }
+
+  function cancelRename() {
+    setRenaming(false);
+    setRenameError(null);
+  }
+
+  async function commitRename() {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenameError("Title cannot be empty.");
+      return;
+    }
+    if (trimmed === conversation?.title) {
+      // No change — just close
+      setRenaming(false);
+      return;
+    }
+
+    const token = await waitForSessionAccessToken();
+    if (!token) {
+      setRenameError("Session expired. Please refresh.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/conversations/${conversationId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title: trimmed }),
+      });
+
+      if (!res.ok) {
+        setRenameError("Failed to rename. Try again.");
+        return;
+      }
+
+      const updated = (await res.json()) as Conversation;
+      // Update local state immediately. Dashboard will refetch on next visit.
+      setConversation(updated);
+      setRenaming(false);
+      setRenameError(null);
+    } catch {
+      setRenameError("Failed to rename. Try again.");
+    }
+  }
+
+  // --- Delete ---
+  async function handleDelete() {
+    if (!confirmDelete || deleting) return;
+    setDeleting(true);
+
+    const token = await waitForSessionAccessToken();
+    if (!token) {
+      setDeleting(false);
+      setConfirmDelete(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/conversations/${conversationId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok || res.status === 204) {
+        // Redirect to dashboard — conversation is gone
+        router.push("/dashboard");
+        return;
+      }
+
+      // Failed — reset state, show nothing broken
+      setDeleting(false);
+      setConfirmDelete(false);
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -267,7 +362,6 @@ export default function ConversationDetailPage() {
       });
 
       setSaveStatus((prev) => ({ ...prev, [msg.id]: res.ok ? "saved" : "error" }));
-
       if (res.ok) {
         setTimeout(() => {
           setSaveStatus((prev) => {
@@ -303,7 +397,7 @@ export default function ConversationDetailPage() {
     );
   }
 
-  // --- Render: conversation not found ---
+  // --- Render: not found ---
   if (!conversation) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -320,13 +414,85 @@ export default function ConversationDetailPage() {
   // --- Render: conversation ---
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 shrink-0">
-        <Link href="/dashboard" className="text-sm text-gray-400 underline hover:text-white">
-          ← Back to conversations
+      {/* Header row */}
+      <div className="mb-4 shrink-0 flex items-start justify-between gap-4">
+        <Link href="/dashboard" className="text-sm text-gray-400 underline hover:text-white mt-1">
+          ← Back
         </Link>
+
+        {/* Actions */}
+        {!confirmDelete && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={startRename}
+              className="text-xs text-gray-500 transition hover:text-white"
+            >
+              Rename
+            </button>
+            <span className="text-gray-700">·</span>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="text-xs text-gray-500 transition hover:text-red-400"
+            >
+              Delete
+            </button>
+          </div>
+        )}
+
+        {/* Delete confirmation — inline, no modal */}
+        {confirmDelete && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-400 text-xs">Delete this conversation?</span>
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+              className="text-xs font-medium text-red-400 transition hover:text-red-300 disabled:opacity-50"
+            >
+              {deleting ? "Deleting…" : "Yes, delete"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+              className="text-xs text-gray-500 transition hover:text-white disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
-      <h2 className="mb-4 shrink-0 text-2xl font-bold">{conversation.title}</h2>
+      {/* Title — inline edit */}
+      {renaming ? (
+        <div className="mb-4 shrink-0 flex items-center gap-2">
+          <input
+            ref={renameInputRef}
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); void commitRename(); }
+              if (e.key === "Escape") cancelRename();
+            }}
+            onBlur={() => void commitRename()}
+            maxLength={100}
+            className="flex-1 rounded-lg border border-white/30 bg-transparent px-3 py-1.5 text-xl font-bold text-white outline-none focus:border-white/60"
+          />
+          {renameError && (
+            <span className="text-xs text-red-400">{renameError}</span>
+          )}
+        </div>
+      ) : (
+        <h2
+          className="mb-4 shrink-0 text-2xl font-bold cursor-default"
+          title="Click Rename to edit"
+        >
+          {conversation.title}
+        </h2>
+      )}
 
       {error && (
         <div className="mb-3 shrink-0 rounded-lg border border-red-500/30 bg-red-950/20 px-3 py-2 text-sm text-red-400">
@@ -380,7 +546,6 @@ export default function ConversationDetailPage() {
           ))
         )}
 
-        {/* Generating indicator — lives inside the thread so it scrolls with content */}
         {sending && (
           <div className="mr-auto max-w-[85%] rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-4 py-3">
             <div className="flex items-center gap-2 text-xs text-emerald-500/70">

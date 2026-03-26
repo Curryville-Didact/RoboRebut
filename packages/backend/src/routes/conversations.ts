@@ -21,6 +21,25 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
     },
   });
 
+  // GET /api/conversations/:id
+  fastify.get<{ Params: { id: string } }>("/conversations/:id", {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
+      const { id } = request.params;
+
+      const { data, error } = await fastify.supabase
+        .from("conversations")
+        .select("*")
+        .eq("id", id)
+        .eq("user_id", request.user.id)
+        .maybeSingle();
+
+      if (error) return reply.status(500).send({ error: error.message });
+      if (!data) return reply.status(404).send({ error: "Conversation not found" });
+      return reply.send(data);
+    },
+  });
+
   // POST /api/conversations
   fastify.post<{ Body: { title?: string } }>("/conversations", {
     preHandler: [fastify.authenticate],
@@ -47,9 +66,12 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
         const { id } = request.params;
         const { title } = request.body;
 
+        // Only update title — not updated_at.
+        // updated_at tracks message activity for sort order.
+        // A manual rename should not bubble a conversation to the top.
         const { data, error } = await fastify.supabase
           .from("conversations")
-          .update({ title, updated_at: new Date().toISOString() })
+          .update({ title })
           .eq("id", id)
           .eq("user_id", request.user.id)
           .select()
