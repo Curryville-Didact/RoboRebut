@@ -1,7 +1,11 @@
+
+import dotenv from "dotenv";
+dotenv.config();
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import type { FastifyInstance } from "fastify";
-import { config } from "./config.js";
+import config from "./config.js";
 import prismaPlugin from "./plugins/prisma.js";
 import redisPlugin from "./plugins/redis.js";
 import websocketPlugin from "./plugins/websocket.js";
