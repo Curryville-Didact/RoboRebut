@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -42,8 +42,9 @@ export default function ConversationDetailPage() {
   const params = useParams();
   const conversationId = params.conversationId as string;
 
-  const mountedRef = useRef(true);
-  const sendInFlightRef = useRef(false);
+  // Tracks the conversationId that the current in-flight send belongs to.
+  // If the user navigates away before the response arrives, we discard it.
+  const inflightConvRef = useRef<string | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -54,26 +55,25 @@ export default function ConversationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
 
+  // --- Load: reset state on every conversationId change, then fetch ---
   useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+    // Immediately clear stale state from previous conversation.
+    // User never sees the wrong thread's messages while the new one loads.
+    setConversation(null);
+    setMessages([]);
+    setError(null);
+    setPageLoading(true);
+    setSaveStatus({});
+    // If a send was in-flight for a different conversation, disown it now.
+    // The send itself will complete (backend still persists) but we won't
+    // apply its response to the new conversation's message list.
+    inflightConvRef.current = null;
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    threadEndRef.current?.scrollIntoView({ behavior });
-  }, []);
-
-  // Load meta + messages in one pass. Stop on first failure.
-  useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      if (!mountedRef.current) return;
-      setError(null);
-      setPageLoading(true);
-
       const token = await waitForSessionAccessToken();
-      if (cancelled || !mountedRef.current) return;
+      if (cancelled) return;
 
       if (!token) {
         setError("Could not load your session. Try refreshing.");
@@ -81,36 +81,33 @@ export default function ConversationDetailPage() {
         return;
       }
 
-      // 1. Load conversation meta
+      // Step 1: conversation meta
       let metaRes: Response;
       try {
         metaRes = await fetch(`${API_URL}/api/conversations/${conversationId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
       } catch {
-        if (mountedRef.current && !cancelled) {
+        if (!cancelled) {
           setError("Could not reach the server. Is the backend running?");
           setPageLoading(false);
         }
         return;
       }
 
+      if (cancelled) return;
+
       if (!metaRes.ok) {
-        if (mountedRef.current && !cancelled) {
-          const msg = metaRes.status === 404
-            ? "Conversation not found."
-            : "Failed to load conversation.";
-          setError(msg);
-          setPageLoading(false);
-        }
+        setError(metaRes.status === 404 ? "Conversation not found." : "Failed to load conversation.");
+        setPageLoading(false);
         return;
       }
 
       const conv = (await metaRes.json()) as Conversation;
-      if (cancelled || !mountedRef.current) return;
+      if (cancelled) return;
       setConversation(conv);
 
-      // 2. Load messages — only runs if meta succeeded
+      // Step 2: messages — only if meta succeeded
       let msgsRes: Response;
       try {
         msgsRes = await fetch(
@@ -118,23 +115,24 @@ export default function ConversationDetailPage() {
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } catch {
-        if (mountedRef.current && !cancelled) {
+        if (!cancelled) {
           setError("Loaded conversation but could not fetch messages.");
           setPageLoading(false);
         }
         return;
       }
 
+      if (cancelled) return;
+
       if (!msgsRes.ok) {
-        if (mountedRef.current && !cancelled) {
-          setError("Failed to load messages.");
-          setPageLoading(false);
-        }
+        setError("Failed to load messages.");
+        setPageLoading(false);
         return;
       }
 
       const msgs = (await msgsRes.json()) as MessageRow[];
-      if (cancelled || !mountedRef.current) return;
+      if (cancelled) return;
+
       setMessages(Array.isArray(msgs) ? msgs : []);
       setPageLoading(false);
     }
@@ -143,25 +141,33 @@ export default function ConversationDetailPage() {
     return () => { cancelled = true; };
   }, [conversationId]);
 
-  // Scroll to bottom when messages first load, or new ones arrive
+  // --- Scroll: one effect, one responsibility ---
+  // Fires when pageLoading flips false (initial load) or messages array grows (new send).
+  // Uses a ref to distinguish initial load (instant) from incremental (smooth).
+  const isFirstScrollRef = useRef(true);
   useEffect(() => {
-    if (!pageLoading && messages.length > 0) {
-      scrollToBottom("instant");
-    }
-  }, [pageLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (pageLoading || messages.length === 0) return;
+    const behavior: ScrollBehavior = isFirstScrollRef.current ? "instant" : "smooth";
+    isFirstScrollRef.current = false;
+    threadEndRef.current?.scrollIntoView({ behavior });
+  }, [pageLoading, messages.length]);
 
+  // Reset scroll sentinel on conversation change
   useEffect(() => {
-    if (messages.length > 0 && !pageLoading) {
-      scrollToBottom();
-    }
-  }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    isFirstScrollRef.current = true;
+  }, [conversationId]);
 
+  // --- Send ---
   async function handleSend() {
     const text = composer.trim();
-    if (!text || sendInFlightRef.current || sending) return;
+    // Prevent double-submit: block if already sending or text is empty.
+    if (!text || sending) return;
 
-    sendInFlightRef.current = true;
-    // Clear composer immediately — don't make user wait for round-trip
+    // Capture the conversationId at dispatch time.
+    // If the user navigates while waiting, we compare on response.
+    const sentInConv = conversationId;
+    inflightConvRef.current = sentInConv;
+
     setComposer("");
     setSending(true);
     setError(null);
@@ -170,7 +176,7 @@ export default function ConversationDetailPage() {
       const token = await waitForSessionAccessToken();
       if (!token) {
         setError("Session expired. Please refresh the page.");
-        setComposer(text); // restore text so user doesn't lose it
+        setComposer(text);
         return;
       }
 
@@ -180,7 +186,7 @@ export default function ConversationDetailPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ conversation_id: conversationId, content: text }),
+        body: JSON.stringify({ conversation_id: sentInConv, content: text }),
       });
 
       let body: unknown;
@@ -194,31 +200,50 @@ export default function ConversationDetailPage() {
           typeof (body as { error: unknown }).error === "string"
             ? (body as { error: string }).error
             : "Failed to send message";
-        setError(msg);
-        setComposer(text); // restore on failure
+        // Only surface error if still on the same conversation
+        if (inflightConvRef.current === sentInConv) {
+          setError(msg);
+          setComposer(text);
+        }
         return;
       }
 
       const parsed = body as { userMessage?: MessageRow; assistantMessage?: MessageRow };
-      if (parsed?.userMessage && parsed?.assistantMessage && mountedRef.current) {
-        setMessages((prev) => [...prev, parsed.userMessage!, parsed.assistantMessage!]);
-      } else if (mountedRef.current) {
+
+      // Guard: discard response if user navigated to a different conversation
+      if (inflightConvRef.current !== sentInConv) return;
+
+      if (parsed?.userMessage && parsed?.assistantMessage) {
+        setMessages((prev) => {
+          // Dedup: if the server message id already exists in the list, skip.
+          // This prevents double-append if the component re-renders mid-send.
+          const existingIds = new Set(prev.map((m) => m.id));
+          const toAdd = [parsed.userMessage!, parsed.assistantMessage!].filter(
+            (m) => !existingIds.has(m.id)
+          );
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
+      } else {
         setError("Unexpected response from server.");
         setComposer(text);
       }
     } catch (e) {
-      if (mountedRef.current) {
+      if (inflightConvRef.current === sentInConv) {
         setError(e instanceof Error ? e.message : "Failed to send message");
         setComposer(text);
       }
     } finally {
-      sendInFlightRef.current = false;
-      if (mountedRef.current) setSending(false);
+      // Only clear sending state if still on the same conversation.
+      // If navigated away, the new conversation's load handles its own state.
+      if (inflightConvRef.current === sentInConv) {
+        inflightConvRef.current = null;
+        setSending(false);
+      }
     }
   }
 
+  // --- Save response ---
   async function handleSaveResponse(msg: MessageRow) {
-    if (!mountedRef.current) return;
     setSaveStatus((prev) => ({ ...prev, [msg.id]: "saving" }));
 
     const token = await waitForSessionAccessToken();
@@ -241,24 +266,19 @@ export default function ConversationDetailPage() {
         }),
       });
 
-      if (mountedRef.current) {
-        setSaveStatus((prev) => ({ ...prev, [msg.id]: res.ok ? "saved" : "error" }));
-        if (res.ok) {
-          setTimeout(() => {
-            if (mountedRef.current) {
-              setSaveStatus((prev) => {
-                const next = { ...prev };
-                delete next[msg.id];
-                return next;
-              });
-            }
-          }, 2000);
-        }
+      setSaveStatus((prev) => ({ ...prev, [msg.id]: res.ok ? "saved" : "error" }));
+
+      if (res.ok) {
+        setTimeout(() => {
+          setSaveStatus((prev) => {
+            const next = { ...prev };
+            delete next[msg.id];
+            return next;
+          });
+        }, 2000);
       }
     } catch {
-      if (mountedRef.current) {
-        setSaveStatus((prev) => ({ ...prev, [msg.id]: "error" }));
-      }
+      setSaveStatus((prev) => ({ ...prev, [msg.id]: "error" }));
     }
   }
 
@@ -269,6 +289,7 @@ export default function ConversationDetailPage() {
     });
   }
 
+  // --- Render: loading ---
   if (pageLoading) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -282,6 +303,7 @@ export default function ConversationDetailPage() {
     );
   }
 
+  // --- Render: conversation not found ---
   if (!conversation) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -295,6 +317,7 @@ export default function ConversationDetailPage() {
     );
   }
 
+  // --- Render: conversation ---
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-4 shrink-0">
@@ -306,18 +329,18 @@ export default function ConversationDetailPage() {
       <h2 className="mb-4 shrink-0 text-2xl font-bold">{conversation.title}</h2>
 
       {error && (
-        <p className="mb-3 shrink-0 rounded-lg border border-red-500/30 bg-red-950/20 px-3 py-2 text-sm text-red-400">
+        <div className="mb-3 shrink-0 rounded-lg border border-red-500/30 bg-red-950/20 px-3 py-2 text-sm text-red-400">
           {error}
-        </p>
+        </div>
       )}
 
-      {/* Message thread */}
+      {/* Thread */}
       <div className="min-h-[240px] flex-1 space-y-3 overflow-y-auto rounded-xl border border-white/10 p-4">
         {messages.length === 0 ? (
           <div className="py-8 text-center">
             <p className="text-gray-400">No messages yet.</p>
             <p className="mt-1 text-sm text-gray-500">
-              Type an objection below — RoboRebut will coach you on how to handle it.
+              Type a merchant objection below — RoboRebut will coach you on how to handle it.
             </p>
           </div>
         ) : (
@@ -356,14 +379,26 @@ export default function ConversationDetailPage() {
             </div>
           ))
         )}
+
+        {/* Generating indicator — lives inside the thread so it scrolls with content */}
+        {sending && (
+          <div className="mr-auto max-w-[85%] rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-4 py-3">
+            <div className="flex items-center gap-2 text-xs text-emerald-500/70">
+              <span className="inline-flex gap-1">
+                <span className="animate-bounce [animation-delay:0ms]">●</span>
+                <span className="animate-bounce [animation-delay:150ms]">●</span>
+                <span className="animate-bounce [animation-delay:300ms]">●</span>
+              </span>
+              <span>RoboRebut is thinking…</span>
+            </div>
+          </div>
+        )}
+
         <div ref={threadEndRef} />
       </div>
 
       {/* Composer */}
       <div className="mt-4 shrink-0 space-y-2 border-t border-white/10 pt-4">
-        {sending && (
-          <p className="text-xs text-gray-500">RoboRebut is thinking…</p>
-        )}
         <textarea
           value={composer}
           onChange={(e) => setComposer(e.target.value)}

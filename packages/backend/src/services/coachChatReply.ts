@@ -116,10 +116,11 @@ export async function generateCoachReply(input: {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `AI reply could not be generated (${msg}). Your message was saved — try again.`;
+      console.warn(`[coachChatReply] OpenAI fallback failed: ${msg}`);
+      return "AI is temporarily unavailable. Please try again in a moment.";
     }
   }
 
-  // --- Path 3: Not configured ---
-  return "AI coaching is not yet configured. Ask Leonard to set OPENCLAW_GATEWAY_TOKEN in the backend environment.";
+  // --- Path 3: Nothing configured ---
+  return "AI is temporarily unavailable. Please try again in a moment.";
 }
