@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { API_URL } from "@/lib/env";
+import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 
 interface Conversation {
   id: string;
@@ -54,6 +55,7 @@ export default function ConversationDetailPage() {
   const [sending, setSending] = useState(false);
   const [composer, setComposer] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
 
   // Rename state
@@ -65,11 +67,26 @@ export default function ConversationDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // --- Composer disabled flag (used by mic hook too) ---
+  const composerDisabled = sending || limitReached;
+
+  // --- Speech-to-text ---
+  const handleTranscript = useCallback((text: string) => {
+    setComposer((prev) => {
+      const trimmed = prev.trimEnd();
+      return trimmed ? `${trimmed} ${text}` : text;
+    });
+  }, []);
+
+  const { state: micState, start: micStart, errorMessage: micError } =
+    useSpeechRecognition(handleTranscript, composerDisabled);
+
   // --- Load ---
   useEffect(() => {
     setConversation(null);
     setMessages([]);
     setError(null);
+    setLimitReached(false);
     setPageLoading(true);
     setSaveStatus({});
     setRenaming(false);
@@ -164,7 +181,7 @@ export default function ConversationDetailPage() {
   // --- Send ---
   async function handleSend() {
     const text = composer.trim();
-    if (!text || sending) return;
+    if (!text || sending || limitReached) return;
 
     const sentInConv = conversationId;
     inflightConvRef.current = sentInConv;
@@ -214,7 +231,21 @@ export default function ConversationDetailPage() {
         userMessage?: MessageRow;
         assistantMessage?: MessageRow;
         updatedTitle?: string | null;
+        error?: string;
       };
+
+      if (parsed?.error === "limit_reached") {
+        if (parsed.userMessage) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            return existingIds.has(parsed.userMessage!.id)
+              ? prev
+              : [...prev, parsed.userMessage!];
+          });
+        }
+        setLimitReached(true);
+        return;
+      }
 
       if (parsed?.userMessage && parsed?.assistantMessage) {
         setMessages((prev) => {
@@ -225,8 +256,6 @@ export default function ConversationDetailPage() {
           return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
         });
 
-        // Apply auto-generated title if backend derived one.
-        // Only update local state — the DB is already updated.
         if (parsed.updatedTitle) {
           setConversation((prev) =>
             prev ? { ...prev, title: parsed.updatedTitle! } : prev
@@ -267,8 +296,11 @@ export default function ConversationDetailPage() {
       setRenameError("Title cannot be empty.");
       return;
     }
+    if (trimmed === "New Conversation") {
+      setRenameError("Please choose a more specific title.");
+      return;
+    }
     if (trimmed === conversation?.title) {
-      // No change — just close
       setRenaming(false);
       return;
     }
@@ -295,7 +327,6 @@ export default function ConversationDetailPage() {
       }
 
       const updated = (await res.json()) as Conversation;
-      // Update local state immediately. Dashboard will refetch on next visit.
       setConversation(updated);
       setRenaming(false);
       setRenameError(null);
@@ -323,12 +354,10 @@ export default function ConversationDetailPage() {
       });
 
       if (res.ok || res.status === 204) {
-        // Redirect to dashboard — conversation is gone
         router.push("/dashboard");
         return;
       }
 
-      // Failed — reset state, show nothing broken
       setDeleting(false);
       setConfirmDelete(false);
     } catch {
@@ -559,6 +588,14 @@ export default function ConversationDetailPage() {
           </div>
         )}
 
+        {limitReached && (
+          <div className="mr-auto max-w-[85%] rounded-lg border border-amber-500/30 bg-amber-950/20 px-4 py-3">
+            <p className="text-sm text-amber-200">
+              You have reached the free-tier limit for AI replies. Please upgrade to continue.
+            </p>
+          </div>
+        )}
+
         <div ref={threadEndRef} />
       </div>
 
@@ -575,17 +612,68 @@ export default function ConversationDetailPage() {
           }}
           placeholder="Type a merchant objection… (Enter to send, Shift+Enter for new line)"
           rows={3}
-          disabled={sending}
+          disabled={composerDisabled}
           className="w-full resize-y rounded-lg border border-white/20 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-white/50 disabled:opacity-50"
         />
-        <button
-          type="button"
-          onClick={() => void handleSend()}
-          disabled={sending || !composer.trim()}
-          className="rounded-lg border border-white/60 px-4 py-2 text-sm font-semibold transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {sending ? "Sending…" : "Send"}
-        </button>
+
+        {/* Mic: unsupported notice */}
+        {micState === "unsupported" && (
+          <p className="text-xs text-gray-500">
+            🎤 Speech input is not supported in this browser. Try Chrome or Edge.
+          </p>
+        )}
+
+        {/* Mic: error notice */}
+        {micState === "error" && micError && (
+          <p className="text-xs text-red-400">{micError}</p>
+        )}
+
+        {/* Send row */}
+        <div className="flex items-center gap-2">
+
+          {/* Mic button — only shown when speech API is available */}
+          {micState !== "unsupported" && (
+            <button
+              type="button"
+              onClick={micStart}
+              disabled={composerDisabled}
+              title={
+                micState === "listening"
+                  ? "Stop listening"
+                  : composerDisabled
+                  ? "Microphone unavailable while sending"
+                  : "Click to speak"
+              }
+              aria-label={micState === "listening" ? "Stop speech input" : "Start speech input"}
+              aria-pressed={micState === "listening"}
+              className={[
+                "flex h-9 w-9 items-center justify-center rounded-lg border text-base transition select-none",
+                micState === "listening"
+                  ? "animate-pulse border-red-400 bg-red-950/40 text-red-300"
+                  : "border-white/20 text-gray-400 hover:border-white/50 hover:text-white",
+                composerDisabled ? "cursor-not-allowed opacity-40" : "cursor-pointer",
+              ].join(" ")}
+            >
+              {micState === "listening" ? "⏹" : "🎤"}
+            </button>
+          )}
+
+          {/* Listening badge */}
+          {micState === "listening" && (
+            <span className="text-xs font-medium text-red-400 animate-pulse">
+              Listening…
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={composerDisabled || !composer.trim()}
+            className="ml-auto rounded-lg border border-white/60 px-4 py-2 text-sm font-semibold transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {sending ? "Sending…" : "Send"}
+          </button>
+        </div>
       </div>
     </div>
   );
