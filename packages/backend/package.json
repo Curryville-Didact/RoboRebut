@@ -8,6 +8,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
+    "live:validate": "tsx src/engine/liveRegressionValidation.ts",
+    "intelligence:rebuild": "tsx src/tools/intelligenceRebuild.ts",
+    "test:intelligence": "npm run build --silent && node dist/services/intelligence/offlineIntelligence.test.js && node dist/services/intelligence/variantInventoryRegistry.test.js && node dist/services/intelligence/intelligenceSummary.test.js && node dist/lib/hardening.test.js && node dist/services/integrations/outboundDispatcher.test.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push"

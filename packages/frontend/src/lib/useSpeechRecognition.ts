@@ -20,6 +20,7 @@ interface SpeechRecognitionResultList {
 }
 
 interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
   readonly results: SpeechRecognitionResultList;
 }
 
@@ -78,6 +79,9 @@ export function useSpeechRecognition(
   disabled = false
 ): UseSpeechRecognitionReturn {
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
+  const sessionIdRef = useRef(0);
+  const stoppingRef = useRef(false);
+  const lastCommittedRef = useRef("");
   const [state, setState] = useState<SpeechState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -96,13 +100,20 @@ export function useSpeechRecognition(
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      sessionIdRef.current += 1;
+      stoppingRef.current = true;
       try { recognitionRef.current?.abort(); } catch { /* ignore */ }
+      recognitionRef.current = null;
     };
   }, []);
 
   const stop = useCallback(() => {
-    try { recognitionRef.current?.stop(); } catch { /* ignore */ }
-    // onend handler transitions state back to idle
+    sessionIdRef.current += 1;
+    stoppingRef.current = true;
+    lastCommittedRef.current = "";
+    try { recognitionRef.current?.abort(); } catch { /* ignore */ }
+    recognitionRef.current = null;
+    setState("idle");
   }, []);
 
   const start = useCallback(() => {
@@ -122,6 +133,9 @@ export function useSpeechRecognition(
     }
 
     setErrorMessage(null);
+    stoppingRef.current = false;
+    lastCommittedRef.current = "";
+    const activeSessionId = ++sessionIdRef.current;
 
     const rec = new Constructor();
     rec.lang = "en-US";
@@ -132,16 +146,25 @@ export function useSpeechRecognition(
     rec.onstart = () => setState("listening");
 
     rec.onresult = (event: SpeechRecognitionEvent) => {
+      if (stoppingRef.current || activeSessionId !== sessionIdRef.current) return;
+
       let transcript = "";
-      for (let i = 0; i < event.results.length; i++) {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        if (result.isFinal) transcript += result[0].transcript;
+        if (result?.isFinal) transcript += result[0].transcript;
       }
       transcript = transcript.trim();
-      if (transcript) onTranscript(transcript);
+      if (!transcript) return;
+
+      // Guard against duplicate final callbacks from some engines.
+      if (transcript === lastCommittedRef.current) return;
+      lastCommittedRef.current = transcript;
+      onTranscript(transcript);
     };
 
     rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (activeSessionId !== sessionIdRef.current) return;
+
       // "aborted" / "no-speech" are non-fatal — silently return to idle
       if (event.error === "aborted" || event.error === "no-speech") {
         setState("idle");
@@ -158,8 +181,12 @@ export function useSpeechRecognition(
     };
 
     rec.onend = () => {
+      if (activeSessionId !== sessionIdRef.current) return;
       // Only reset to idle if we're still in "listening"; error state stays
       setState((prev) => (prev === "listening" ? "idle" : prev));
+      recognitionRef.current = null;
+      stoppingRef.current = false;
+      lastCommittedRef.current = "";
     };
 
     recognitionRef.current = rec;

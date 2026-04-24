@@ -1,11 +1,7 @@
 /**
- * responseFormatter.ts
+ * responseFormatter.ts — Package ranked rebuttals for `/api/rebuttal`, `/api/regenerate`, `/ws`.
  *
- * Phase 2.3 — Delivery Engine
- *
- * Transforms a RebuttalOutput (3 ranked rebuttals from Phase 2.2) plus the
- * original analysis payload into a structured FormattedResponse package
- * ready for the frontend.
+ * Not used by `coachChatReply` / live conversation persistence (single assistant `content` string).
  */
 
 import {
@@ -48,12 +44,22 @@ export interface FormattedResponse {
 export function formatResponse(
   rebuttals: RebuttalOutput,
   payload: AnalysisPayload,
-  options?: { mode?: "suggestion" | "assist" | "auto"; session_id?: string }
+  options?: {
+    mode?: "suggestion" | "assist" | "auto";
+    session_id?: string;
+    variantCount?: number;
+  }
 ): FormattedResponse {
-  const sorted = [...rebuttals.rebuttals].sort((a, b) => a.rank - b.rank);
+  const variantCount =
+    typeof options?.variantCount === "number"
+      ? Math.max(1, Math.floor(options.variantCount))
+      : rebuttals.rebuttals.length;
+  const sorted = [...rebuttals.rebuttals]
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, variantCount);
 
   const primary = sorted[0];
-  const alternatives = sorted.slice(1, 3).map((r) => r.text);
+  const alternatives = sorted.slice(1).map((r) => r.text);
 
   const mode = options?.mode ?? "suggestion";
   const session_id = options?.session_id ?? crypto.randomUUID();

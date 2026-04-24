@@ -1,5 +1,6 @@
 export type RawInput = {
   message: string;
+  planType?: string | null;
 };
 
 export type NormalizedInput = {
@@ -32,6 +33,7 @@ export type StrategyResult = {
   approach: string;
   tone: string;
   structure: string[];
+  tag?: string;
 };
 
 export type GeneratedResponse = {

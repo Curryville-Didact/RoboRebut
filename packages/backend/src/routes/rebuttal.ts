@@ -13,6 +13,15 @@ import {
   type AnalysisPayload,
 } from "../services/responseGenerator.js";
 import { formatResponse } from "../services/responseFormatter.js";
+import { resolveToneModeForPlan } from "../services/toneAccess.js";
+import {
+  assertGenerationBurstAllowance,
+  assertUsageAllowance,
+  incrementUsageCount,
+  isPlanEnforcementError,
+  resolveGenerationBurstKey,
+  resolveRequestPlanContext,
+} from "../services/planEnforcement.js";
 
 export async function rebuttalRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: AnalysisPayload & { tone_override?: string } }>(
@@ -27,7 +36,52 @@ export async function rebuttalRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Normalise category — fall back to "other"
+      const context = await resolveRequestPlanContext(
+        fastify.supabase,
+        request.headers.authorization
+      );
+
+      try {
+        assertGenerationBurstAllowance(
+          resolveGenerationBurstKey(context?.user.id ?? null, request)
+        );
+        if (!context) {
+          return reply.status(401).send({
+            code: "AUTH_REQUIRED",
+            message: "Authentication required",
+          });
+        }
+        await assertUsageAllowance(fastify.supabase, context);
+      } catch (err) {
+        if (isPlanEnforcementError(err)) {
+          return reply
+            .status(err.statusCode)
+            .send({ code: err.code, message: err.message });
+        }
+        throw err;
+      }
+
+      const { planType, entitlements } = context;
+      const resolvedTone = resolveToneModeForPlan(body.tone_override, planType);
+      if (resolvedTone.acceptedAdvanced && resolvedTone.tone) {
+        fastify.log.info(
+          { planType, tone: resolvedTone.tone },
+          "rebuttal: advanced tone accepted"
+        );
+      } else if (resolvedTone.downgraded) {
+        fastify.log.info(
+          {
+            planType,
+            requestedTone: resolvedTone.requested,
+            fallbackTone: resolvedTone.tone,
+          },
+          "rebuttal: advanced tone downgraded"
+        );
+      }
+      if (entitlements.priorityGeneration) {
+        fastify.log.info({ planType }, "rebuttal: priority generation enabled");
+      }
+
       const payload: AnalysisPayload = {
         raw_input: body.raw_input.trim(),
         category: body.category ?? "other",
@@ -36,13 +90,19 @@ export async function rebuttalRoutes(fastify: FastifyInstance) {
         urgency: body.urgency,
         confidence: body.confidence,
         signals: body.signals,
-        tone_override: body.tone_override,
+        tone_override: resolvedTone.tone,
       };
 
-      // Generate rebuttals via Claude
-      const output = await generateRebuttals(payload);
+      const variantCount = entitlements.responseVariants;
 
-      // Persist to PostgreSQL
+      const output = await generateRebuttals(payload, {
+        variantCount,
+        priorityGeneration: entitlements.priorityGeneration,
+        planType,
+      });
+
+      await incrementUsageCount(fastify.supabase, context.user.id);
+
       try {
         const [r1, r2, r3] = output.rebuttals;
         await fastify.prisma.rebuttal.create({
@@ -60,12 +120,15 @@ export async function rebuttalRoutes(fastify: FastifyInstance) {
           },
         });
       } catch (dbErr) {
-        // Log but don't fail the request — user gets rebuttals regardless
         fastify.log.error({ err: dbErr }, "Failed to persist rebuttal to DB");
       }
 
-      // Return structured FormattedResponse instead of raw RebuttalOutput
-      return reply.send(formatResponse(output, payload, { mode: "suggestion" }));
+      return reply.send(
+        formatResponse(output, payload, {
+          mode: "suggestion",
+          variantCount,
+        })
+      );
     }
   );
 }

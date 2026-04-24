@@ -3,6 +3,7 @@ node_modules/
 dist/
 build/
 .env
+. env
 .env.local
 .env.*.local
 *.log
@@ -12,3 +13,9 @@ coverage/
 .turbo
 uploads/
 *.tsbuildinfo
+
+# pnpm
+.pnpm-store/
+
+# Supabase CLI local temp
+supabase/.temp/

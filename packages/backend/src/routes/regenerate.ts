@@ -15,6 +15,15 @@ import {
   formatResponse,
   type FormattedResponse,
 } from "../services/responseFormatter.js";
+import { resolveToneModeForPlan } from "../services/toneAccess.js";
+import {
+  assertGenerationBurstAllowance,
+  assertUsageAllowance,
+  incrementUsageCount,
+  isPlanEnforcementError,
+  resolveGenerationBurstKey,
+  resolveRequestPlanContext,
+} from "../services/planEnforcement.js";
 
 type RegenerateBody = {
   raw_input: string;
@@ -42,6 +51,52 @@ export async function regenerateRoutes(fastify: FastifyInstance) {
         });
       }
 
+      const context = await resolveRequestPlanContext(
+        fastify.supabase,
+        request.headers.authorization
+      );
+
+      try {
+        assertGenerationBurstAllowance(
+          resolveGenerationBurstKey(context?.user.id ?? null, request)
+        );
+        if (!context) {
+          return reply.status(401).send({
+            code: "AUTH_REQUIRED",
+            message: "Authentication required",
+          });
+        }
+        await assertUsageAllowance(fastify.supabase, context);
+      } catch (err) {
+        if (isPlanEnforcementError(err)) {
+          return reply
+            .status(err.statusCode)
+            .send({ code: err.code, message: err.message });
+        }
+        throw err;
+      }
+
+      const { planType, entitlements } = context;
+      const resolvedTone = resolveToneModeForPlan(body.tone_override, planType);
+      if (resolvedTone.acceptedAdvanced && resolvedTone.tone) {
+        fastify.log.info(
+          { planType, tone: resolvedTone.tone },
+          "regenerate: advanced tone accepted"
+        );
+      } else if (resolvedTone.downgraded) {
+        fastify.log.info(
+          {
+            planType,
+            requestedTone: resolvedTone.requested,
+            fallbackTone: resolvedTone.tone,
+          },
+          "regenerate: advanced tone downgraded"
+        );
+      }
+      if (entitlements.priorityGeneration) {
+        fastify.log.info({ planType }, "regenerate: priority generation enabled");
+      }
+
       const payload: AnalysisPayload = {
         raw_input: body.raw_input.trim(),
         category: body.category ?? "other",
@@ -50,19 +105,26 @@ export async function regenerateRoutes(fastify: FastifyInstance) {
         urgency: body.urgency,
         confidence: body.confidence,
         signals: body.signals,
-        tone_override: body.tone_override,
+        tone_override: resolvedTone.tone,
       };
 
-      // Generate rebuttals via Claude (with tone_override baked into prompt)
-      const rebuttals = await generateRebuttals(payload);
+      const variantCount = entitlements.responseVariants;
 
-      // Format into structured delivery package
+      const rebuttals = await generateRebuttals(payload, {
+        variantCount,
+        priorityGeneration: entitlements.priorityGeneration,
+        planType,
+        conversationId: body.session_id ?? null,
+      });
+
+      await incrementUsageCount(fastify.supabase, context.user.id);
+
       const formatted: FormattedResponse = formatResponse(rebuttals, payload, {
         mode: "suggestion",
         session_id: body.session_id,
+        variantCount,
       });
 
-      // Persist best-effort — never fail the request on DB error
       try {
         const [r1, r2, r3] = rebuttals.rebuttals;
         await fastify.prisma.rebuttal.create({

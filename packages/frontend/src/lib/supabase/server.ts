@@ -2,7 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function createClient() {
+  console.log("[SUPABASE_CREATE_CLIENT_START]");
   const cookieStore = await cookies();
+  console.log("[SUPABASE_CREATE_CLIENT_AFTER_COOKIES]");
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,4 +26,5 @@ export async function createClient() {
       },
     }
   );
+  // Note: createServerClient is sync; getUser/getSession are the async network calls.
 }

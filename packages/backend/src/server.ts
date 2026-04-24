@@ -1,3 +1,12 @@
+/**
+ * Fastify app bootstrap.
+ *
+ * PRODUCTION live coaching: `POST /api/messages` → `coachChatReply` (see `routes/messages.ts`).
+ *
+ * NON-PRODUCTION: `GET /ws` handler below runs `runObjectionPipeline` + `responseGenerator` for
+ * demos/integration tests — no Supabase thread, no pattern tables, hard-coded free-tier variants.
+ * Keep Phase 4.+(production) work off this path.
+ */
 
 import Fastify from "fastify";
 import cors from "@fastify/cors";
@@ -11,10 +20,20 @@ import { runObjectionPipeline } from "./lib/runObjectionPipeline.js";
 import { rebuttalRoutes } from "./routes/rebuttal.js";
 import { regenerateRoutes } from "./routes/regenerate.js";
 import { conversationRoutes } from "./routes/conversations.js";
+import { billingRoutes } from "./routes/billing.js";
 import { messageRoutes } from "./routes/messages.js";
+import { coachLiveWsRoutes } from "./routes/coachLiveWs.js";
+import { usageRoutes } from "./routes/usage.js";
 import { savedResponseRoutes } from "./routes/savedResponses.js";
+import { analyticsRoutes } from "./routes/analytics.js";
+import { rebuttalIntelRoutes } from "./routes/rebuttalIntel.js";
+import { adminIntelligenceRoutes } from "./routes/adminIntelligence.js";
+import { integrationsRoutes } from "./routes/integrations.js";
+import { founderSupportRoutes } from "./routes/founderSupport.js";
+import { founderAnalyticsRoutes } from "./routes/founderAnalytics.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
+import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
 
 export async function createServer(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -53,8 +72,17 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(rebuttalRoutes);
   await app.register(regenerateRoutes);
   await app.register(conversationRoutes, { prefix: "/api" });
+  await app.register(billingRoutes, { prefix: "/api" });
   await app.register(messageRoutes, { prefix: "/api" });
+  await app.register(coachLiveWsRoutes, { prefix: "/api" });
+  await app.register(usageRoutes, { prefix: "/api" });
   await app.register(savedResponseRoutes, { prefix: "/api" });
+  await app.register(analyticsRoutes, { prefix: "/api" });
+  await app.register(rebuttalIntelRoutes, { prefix: "/api" });
+  await app.register(adminIntelligenceRoutes, { prefix: "/api" });
+  await app.register(integrationsRoutes, { prefix: "/api" });
+  await app.register(founderSupportRoutes, { prefix: "/api" });
+  await app.register(founderAnalyticsRoutes, { prefix: "/api" });
 
   app.get(
     "/api/me",
@@ -69,6 +97,7 @@ export async function createServer(): Promise<FastifyInstance> {
     }
   );
 
+  // --- Demo / support WebSocket (NOT the dashboard conversation thread) ---
   app.get("/ws", { websocket: true }, (socket) => {
     socket.send(
       JSON.stringify({
@@ -92,7 +121,7 @@ export async function createServer(): Promise<FastifyInstance> {
           })
         );
 
-        // Phase 2.1 — classify and analyse the objection
+        // Demo path: `runObjectionPipeline` + ranked rebuttals — not `coachChatReply`
         const result = await runObjectionPipeline({ message });
 
         socket.send(
@@ -120,7 +149,10 @@ export async function createServer(): Promise<FastifyInstance> {
           signals: result.classification.signals,
         };
 
-        const rebuttals = await generateRebuttals(analysisPayload);
+        const variantCount = getResponseVariantCountForPlan("free");
+        const rebuttals = await generateRebuttals(analysisPayload, {
+          variantCount,
+        });
 
         // Persist to DB (best-effort — don't block the WS response on failure)
         app.prisma.rebuttal
@@ -155,7 +187,9 @@ export async function createServer(): Promise<FastifyInstance> {
 
         // Legacy single-response event for backwards compat with existing frontend
         // Phase 2.3: also include formatted delivery package
-        const formattedWs = formatResponse(rebuttals, analysisPayload);
+        const formattedWs = formatResponse(rebuttals, analysisPayload, {
+          variantCount,
+        });
         socket.send(
           JSON.stringify({
             type: "response",

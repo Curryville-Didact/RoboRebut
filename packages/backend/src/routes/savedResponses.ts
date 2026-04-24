@@ -4,11 +4,14 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { markPatternIntelSaved } from "../services/patternIntelligence.js";
 
 interface SavedResponseBody {
   label: string;
   content: string;
   category?: string;
+  /** Optional structured metadata (tone, objection preview, pattern key, etc.). */
+  metadata?: Record<string, unknown>;
 }
 
 export async function savedResponseRoutes(fastify: FastifyInstance): Promise<void> {
@@ -31,7 +34,7 @@ export async function savedResponseRoutes(fastify: FastifyInstance): Promise<voi
   fastify.post<{ Body: SavedResponseBody }>("/saved-responses", {
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
-      const { label, content, category } = request.body;
+      const { label, content, category, metadata } = request.body;
 
       if (!label || !content) {
         return reply.status(400).send({ error: "label and content are required" });
@@ -44,11 +47,23 @@ export async function savedResponseRoutes(fastify: FastifyInstance): Promise<voi
           label,
           content,
           category: category ?? null,
+          metadata: metadata ?? null,
         })
         .select()
         .single();
 
       if (error) return reply.status(500).send({ error: error.message });
+
+      // Phase 4.4 — save reinforcement: if the client includes a source message id, mark intel as saved.
+      // Best-effort; never blocks save flow.
+      const sourceMessageId =
+        metadata && typeof metadata === "object" && typeof (metadata as any).sourceMessageId === "string"
+          ? String((metadata as any).sourceMessageId).trim()
+          : "";
+      if (sourceMessageId) {
+        void markPatternIntelSaved(fastify.supabase, sourceMessageId);
+      }
+
       return reply.status(201).send(data);
     },
   });

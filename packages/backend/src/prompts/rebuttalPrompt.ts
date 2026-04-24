@@ -1,9 +1,14 @@
+import {
+  normalizeToneMode,
+  toneModePromptInstruction,
+} from "../services/toneAccess.js";
+
 /**
  * rebuttalPrompt.ts
  *
  * Builds a structured Claude prompt from a Phase 2.1 analysis payload.
  * Uses the Acknowledge / Reframe / Position / Redirect (ARPR) framework.
- * Returns 3 ranked rebuttal options as a JSON-structured response.
+ * Returns ranked rebuttal options as a JSON-structured response.
  */
 
 export interface AnalysisPayload {
@@ -14,7 +19,7 @@ export interface AnalysisPayload {
   urgency?: string;       // low, medium, high
   confidence?: number;    // 0–1
   signals?: string[];
-  tone_override?: string; // consultative, assertive, friendly, urgent, analytical, empathetic, direct, social-proof, challenger
+  tone_override?: string; // consultative, assertive, friendly, urgent, analytical, closer, pressure, analytical_breakdown
 }
 
 export interface RebuttalOption {
@@ -95,16 +100,31 @@ export function buildRebuttalMessages(payload: AnalysisPayload): {
   role: "system" | "user";
   content: string;
 }[] {
+  return buildRebuttalMessagesForCount(payload, 3);
+}
+
+export function buildRebuttalMessagesForCount(
+  payload: AnalysisPayload,
+  variantCount: number,
+  options?: { priorityGeneration?: boolean }
+): {
+  role: "system" | "user";
+  content: string;
+}[] {
   const guidance = getCategoryGuidance(payload.category);
   const tone = toneHint(payload.emotional_tone);
   const urgency = urgencyHint(payload.urgency);
+  const normalizedToneOverride = normalizeToneMode(payload.tone_override);
+  const priorityLine = options?.priorityGeneration
+    ? "Priority generation is enabled for this request. Keep the response high-signal and latency-aware without reducing quality."
+    : "";
   const toneOverrideLine = payload.tone_override
-    ? `Tone override requested by user: ${payload.tone_override}. All 3 rebuttals must reflect this tone. The "tone" field in each rebuttal must match this override.`
+    ? `Tone override requested by user: ${payload.tone_override}. Every rebuttal must reflect this tone. The "tone" field in each rebuttal must match this override.${normalizedToneOverride ? ` ${toneModePromptInstruction(normalizedToneOverride)}` : ""}`
     : "";
 
   const system = `You are RoboRebut — a real-time sales objection handling engine built for professional closers.
 
-Your job: generate 3 ranked rebuttal options for a live sales objection, using the Acknowledge / Reframe / Position / Redirect (ARPR) framework.
+Your job: generate ${variantCount} ranked rebuttal options for a live sales objection, using the Acknowledge / Reframe / Position / Redirect (ARPR) framework.
 
 ## ARPR Framework
 - Acknowledge: Validate the prospect's concern without agreeing with their conclusion.
@@ -118,27 +138,26 @@ ${guidance}
 ## Tone and Urgency
 ${tone}
 ${urgency}
+${priorityLine}
 ${toneOverrideLine}
 
 ## Output Rules
 - Return ONLY valid JSON. No markdown. No explanation outside the JSON.
-- Return exactly 3 rebuttals, ranked 1–3 by fit.
+- Return exactly ${variantCount} rebuttals, ranked 1–${variantCount} by fit.
 - Each rebuttal should be 2–4 sentences. No bullet points inside the text.
-- Vary the tone across all 3: one empathetic, one direct, one social-proof/challenger.
-- confidence scores: rank 1 = 0.90–0.96, rank 2 = 0.82–0.89, rank 3 = 0.74–0.81.
+- Vary the tones naturally across the set while keeping each rebuttal useful and distinct.
+- confidence scores should descend by rank.
 - framework field: name the primary ARPR move(s) used (e.g., "acknowledge-reframe", "reframe-position", "redirect-challenge").
-- tone field: one of: empathetic | direct | social-proof | challenger | consultative
+- tone field: one of: empathetic | direct | social-proof | challenger | consultative | assertive | friendly | urgent | analytical | closer | pressure | analytical_breakdown
 
 ## Required JSON shape
 {
   "rebuttals": [
-    { "rank": 1, "text": "...", "tone": "...", "framework": "...", "confidence": 0.0 },
-    { "rank": 2, "text": "...", "tone": "...", "framework": "...", "confidence": 0.0 },
-    { "rank": 3, "text": "...", "tone": "...", "framework": "...", "confidence": 0.0 }
+    { "rank": 1, "text": "...", "tone": "...", "framework": "...", "confidence": 0.0 }
   ]
 }`;
 
-  const user = `Generate 3 ranked rebuttals for the following live sales objection.
+  const user = `Generate ${variantCount} ranked rebuttals for the following live sales objection.
 
 Objection: "${payload.raw_input}"
 Category: ${payload.category}

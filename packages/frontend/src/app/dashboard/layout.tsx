@@ -1,19 +1,22 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { BackendWebSocket } from "@/components/BackendWebSocket";
+import { isFounderEmail } from "@/lib/founder";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let userEmail = "";
 
-  if (!user) {
-    redirect("/login");
+  try {
+    const supabase = await createClient();
+    const result = await supabase.auth.getUser();
+    userEmail = result.data.user?.email ?? "";
+  } catch {
+    /* Auth gate is middleware; avoid redirect here so a transient getUser/RSC blip
+       does not fail the client flight with "Load failed" then succeed on full load. */
   }
 
   return (
@@ -22,22 +25,82 @@ export default async function DashboardLayout({
       <aside className="flex w-64 flex-col border-r border-white/10 p-6">
         <div className="mb-8">
           <h1 className="text-xl font-bold">RoboRebut</h1>
-          <p className="mt-1 text-xs text-gray-500 truncate">{user.email}</p>
+          <p className="mt-1 text-xs text-gray-500 truncate">{userEmail}</p>
         </div>
 
         <nav className="flex-1 space-y-1">
-          <a
+          <Link
             href="/dashboard"
             className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
           >
             Conversations
-          </a>
-          <a
+          </Link>
+          <Link
             href="/dashboard/saved"
             className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
           >
             Saved Responses
+          </Link>
+          <div className="pt-3">
+            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+              Intelligence
+            </div>
+            <Link
+              href="/dashboard/intelligence/analytics"
+              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Performance
+            </Link>
+            <Link
+              href="/dashboard/intelligence/review"
+              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Review
+            </Link>
+            <Link
+              href="/dashboard/intelligence"
+              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Insights
+            </Link>
+          </div>
+          {/* Full navigation avoids client transition edge cases when `.next` is mid-compile. */}
+          <a
+            href="/pricing"
+            className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+          >
+            Pricing
           </a>
+          <div className="pt-3">
+            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+              Settings
+            </div>
+            <Link
+              href="/dashboard/settings/integrations"
+              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Integrations
+            </Link>
+          </div>
+          {isFounderEmail(userEmail) ? (
+            <div className="pt-3">
+              <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                Founder
+              </div>
+              <Link
+                href="/dashboard/analytics"
+                className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/dashboard/founder/support"
+                className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Support Console
+              </Link>
+            </div>
+          ) : null}
         </nav>
 
         <form action="/logout" method="POST" className="mt-auto">

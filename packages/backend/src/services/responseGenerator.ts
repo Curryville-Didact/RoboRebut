@@ -1,21 +1,23 @@
 /**
- * responseGenerator.ts
+ * responseGenerator.ts — Ranked multi-rebuttal generation (secondary paths).
  *
- * Phase 2.2 — Response Generation Engine
+ * Used by: `/api/rebuttal`, `/api/regenerate`, and the `/ws` demo in `server.ts`.
+ * NOT used by the production dashboard thread (`coachChatReply` / `POST /api/messages`).
  *
  * Calls Claude (via OpenClaw gateway OpenAI-compat HTTP endpoint) with the
- * structured prompt from rebuttalPrompt.ts and returns 3 ranked rebuttal options.
+ * structured prompt from rebuttalPrompt.ts and returns ranked rebuttal options.
  *
  * Falls back to template-based rebuttals if the AI call fails, so the
  * WebSocket pipeline is never broken.
  */
 
 import {
-  buildRebuttalMessages,
+  buildRebuttalMessagesForCount,
   type AnalysisPayload,
   type RebuttalOption,
   type RebuttalOutput,
 } from "../prompts/rebuttalPrompt.js";
+import { trackEvent } from "./eventTracker.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -34,13 +36,38 @@ export type { AnalysisPayload, RebuttalOption, RebuttalOutput };
 // ─── Main service ─────────────────────────────────────────────────────────────
 
 /**
- * Generate 3 ranked rebuttals for a given analysis payload.
+ * Generate ranked rebuttals for a given analysis payload.
  * Uses Claude via the OpenClaw gateway HTTP endpoint.
  */
 export async function generateRebuttals(
-  payload: AnalysisPayload
+  payload: AnalysisPayload,
+  options?: {
+    variantCount?: number;
+    priorityGeneration?: boolean;
+    planType?: string;
+    conversationId?: string | null;
+  }
 ): Promise<RebuttalOutput> {
-  const messages = buildRebuttalMessages(payload);
+  const variantCount = normalizeVariantCount(options?.variantCount);
+  const priorityGeneration = options?.priorityGeneration === true;
+  const messages = buildRebuttalMessagesForCount(payload, variantCount, {
+    priorityGeneration,
+  });
+
+  if (priorityGeneration) {
+    console.info(
+      `[responseGenerator] Priority generation enabled for category=${payload.category}`
+    );
+    trackEvent(console, {
+      eventName: "priority_generation_used",
+      planType: options?.planType ?? "free",
+      conversationId: options?.conversationId ?? null,
+      priorityGeneration: true,
+      tone: payload.tone_override ?? null,
+      objectionType: payload.category,
+      surface: "responseGenerator",
+    });
+  }
 
   try {
     const response = await fetch(
@@ -73,7 +100,7 @@ export async function generateRebuttals(
     };
 
     const content = data.choices?.[0]?.message?.content ?? "";
-    const parsed = parseRebuttalJSON(content);
+    const parsed = parseRebuttalJSON(content, variantCount);
 
     if (!parsed) {
       throw new Error("Claude returned invalid or unparseable JSON");
@@ -82,7 +109,7 @@ export async function generateRebuttals(
     return parsed;
   } catch (err) {
     console.error("[responseGenerator] AI call failed, using fallback:", err);
-    return buildFallbackRebuttals(payload);
+    return buildFallbackRebuttals(payload, variantCount);
   }
 }
 
@@ -92,7 +119,10 @@ export async function generateRebuttals(
  * Safely parse Claude's JSON response.
  * Claude occasionally wraps JSON in markdown fences — strip those first.
  */
-function parseRebuttalJSON(raw: string): RebuttalOutput | null {
+function parseRebuttalJSON(
+  raw: string,
+  variantCount: number
+): RebuttalOutput | null {
   try {
     // Strip ```json ... ``` or ``` ... ``` markdown fences if present
     const cleaned = raw
@@ -110,7 +140,7 @@ function parseRebuttalJSON(raw: string): RebuttalOutput | null {
 
     // Validate shape and coerce types
     const rebuttals: RebuttalOption[] = (parsed.rebuttals as RawRebuttal[])
-      .slice(0, 3)
+      .slice(0, variantCount)
       .map((r: RawRebuttal, i: number): RebuttalOption => ({
         rank: typeof r.rank === "number" ? r.rank : i + 1,
         text: typeof r.text === "string" ? r.text : "",
@@ -119,7 +149,7 @@ function parseRebuttalJSON(raw: string): RebuttalOutput | null {
         confidence:
           typeof r.confidence === "number"
             ? Math.min(1, Math.max(0, r.confidence))
-            : 0.8 - i * 0.07,
+            : Math.max(0.5, 0.9 - i * 0.07),
       }))
       .filter((r: RebuttalOption) => r.text.length > 0);
 
@@ -137,11 +167,14 @@ function parseRebuttalJSON(raw: string): RebuttalOutput | null {
  * Template-based fallback rebuttals used when the AI call fails.
  * Keeps the WebSocket pipeline alive under any circumstances.
  */
-function buildFallbackRebuttals(payload: AnalysisPayload): RebuttalOutput {
+function buildFallbackRebuttals(
+  payload: AnalysisPayload,
+  variantCount: number
+): RebuttalOutput {
   const templates = getFallbackTemplates(payload.category, payload.raw_input);
 
   return {
-    rebuttals: templates.map((t, i) => ({
+    rebuttals: templates.slice(0, variantCount).map((t, i) => ({
       rank: i + 1,
       text: t.text,
       tone: t.tone,
@@ -152,6 +185,11 @@ function buildFallbackRebuttals(payload: AnalysisPayload): RebuttalOutput {
 }
 
 type FallbackTemplate = { text: string; tone: string; framework: string };
+
+function normalizeVariantCount(variantCount?: number): number {
+  if (typeof variantCount !== "number" || Number.isNaN(variantCount)) return 3;
+  return Math.max(1, Math.min(4, Math.floor(variantCount)));
+}
 
 function getFallbackTemplates(
   category: string,
@@ -226,8 +264,39 @@ function getFallbackTemplates(
         framework: "position-redirect",
       },
     ],
+    other: [
+      {
+        text: "That's a fair pushback. Rather than force a response, I'd rather understand what feels most uncertain so we can address the real issue. What part gives you the biggest pause?",
+        tone: "consultative",
+        framework: "acknowledge-redirect",
+      },
+      {
+        text: "Usually when this comes up, the surface objection isn't the whole story. If we strip it down, is the bigger concern risk, priority, or proof that this will actually work?",
+        tone: "direct",
+        framework: "reframe-redirect",
+      },
+      {
+        text: "A lot of strong buyers say something similar before they name the actual blocker. Once that comes into the open, the decision usually gets much easier. What's the real hesitation behind this?",
+        tone: "social-proof",
+        framework: "acknowledge-reframe",
+      },
+      {
+        text: "If this were clearly tied to an outcome you cared about, the objection would probably sound different. What result would have to be on the table for this conversation to feel worth continuing?",
+        tone: "challenger",
+        framework: "position-redirect",
+      },
+    ],
   };
 
   const templates = map[category] ?? map["financial"];
-  return templates;
+  if (templates.length >= 4) return templates;
+
+  return [
+    ...templates,
+    {
+      text: "The objection makes sense on the surface, but it usually points to a deeper decision variable underneath it. If we solved that underlying issue, what would make this conversation feel worthwhile?",
+      tone: "challenger",
+      framework: "reframe-redirect",
+    },
+  ];
 }

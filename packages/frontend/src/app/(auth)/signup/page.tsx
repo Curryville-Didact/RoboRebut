@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
+import { getAuthCallbackURL } from "@/lib/authRedirect";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -43,33 +44,27 @@ export default function SignupPage() {
     try {
       // Disable all background auth activity — this page only needs signUp(),
       // not session detection, token refresh, or URL parsing.
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          auth: {
-            autoRefreshToken: false,
-            detectSessionInUrl: false,
-            persistSession: false,
-          },
-        }
-      );
+      const supabase = createClient();
 
       const { error: signUpError } = await supabase.auth.signUp({
         email: trimmedEmail,
         password: trimmedPassword,
+        options: {
+          emailRedirectTo: getAuthCallbackURL(),
+        },
       });
 
       if (signUpError) {
-        console.error("[signup] signUp error:", signUpError);
+        console.error("Signup error:", signUpError);
         setError(signUpError.message);
         return;
       }
 
       setDone(true);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Something went wrong";
-      console.error("[signup] caught unexpected error:", err);
+    } catch (error) {
+      console.error("Signup error:", error);
+      const msg =
+        error instanceof Error ? error.message : String(error);
       setError(msg);
     } finally {
       setLoading(false);
@@ -78,69 +73,87 @@ export default function SignupPage() {
 
   if (done) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="w-full max-w-sm rounded-lg border p-6 text-center">
-          <h1 className="mb-2 text-2xl font-semibold">Check your email</h1>
-          <p>We sent a confirmation link to {email}.</p>
+      <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
+        <div className="w-full max-w-sm space-y-4 rounded-xl border border-white/20 p-8 text-center">
+          <h1 className="text-2xl font-bold">Check your email</h1>
+          <p className="text-gray-400">
+            We sent a confirmation link to <strong className="text-white">{email}</strong>.
+            Click it to activate your account.
+          </p>
+          <a href="/login" className="block text-sm text-white underline">
+            Back to sign in
+          </a>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <form
-        onSubmit={handleSubmit}
-        autoComplete="off"
-        className="w-full max-w-sm space-y-4 rounded-lg border p-6"
-      >
-        <h1 className="text-2xl font-semibold">Sign up</h1>
-
-        <div>
-          <label className="mb-1 block text-sm" htmlFor="signup-email">
-            Email
-          </label>
-          <input
-            id="signup-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-            className="w-full rounded border px-3 py-2"
-            placeholder="you@example.com"
-          />
+    <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
+      <div className="w-full max-w-sm space-y-6 rounded-xl border border-white/20 p-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold">RoboRebut</h1>
+          <p className="mt-1 text-sm text-gray-400">Create your account</p>
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm" htmlFor="signup-password">
-            Password
-          </label>
-          <input
-            id="signup-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
-            required
-            autoComplete="new-password"
-            className="w-full rounded border px-3 py-2"
-            placeholder="At least 6 characters"
-          />
-        </div>
-
-        {error ? (
-          <p className="text-sm text-red-600">{error}</p>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-60"
+        <form
+          onSubmit={handleSubmit}
+          autoComplete="off"
+          className="space-y-4"
         >
-          {loading ? "Creating..." : "Create account"}
-        </button>
-      </form>
+          <div>
+            <label className="mb-1 block text-sm text-gray-400" htmlFor="signup-email">
+              Email
+            </label>
+            <input
+              id="signup-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              className="w-full rounded-lg border border-white/20 bg-transparent px-4 py-2.5 text-white outline-none placeholder:text-gray-600 focus:border-white/60"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm text-gray-400" htmlFor="signup-password">
+              Password
+            </label>
+            <input
+              id="signup-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={6}
+              required
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-white/20 bg-transparent px-4 py-2.5 text-white outline-none placeholder:text-gray-600 focus:border-white/60"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {error ? (
+            <p className="text-sm text-red-400">{error}</p>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg border border-white/60 py-2.5 font-semibold transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Creating…" : "Create account"}
+          </button>
+        </form>
+
+        <p className="text-center text-sm text-gray-400">
+          Already have an account?{" "}
+          <a href="/login" className="text-white underline">
+            Sign in
+          </a>
+        </p>
+      </div>
     </main>
   );
 }

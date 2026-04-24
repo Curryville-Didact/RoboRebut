@@ -1,10 +1,43 @@
 /**
- * messages.ts — conversation thread messages + send (user + AI reply).
+ * messages.ts — PRODUCTION REST entry for in-app conversation threads.
+ *
+ * Live AI: `POST /api/messages` → `generateCoachReply` (`services/coachChatReply.ts`).
+ * Pattern ranking / Phase 4.4 hooks run inside `coachChatReply` before the LLM call.
+ *
+ * Assistant rows persist `content` (legacy blob) and optional `structured_reply` (JSON) for UI.
  */
 
 import type { FastifyInstance } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { generateCoachReply } from "../services/coachChatReply.js";
+import { normalizeConversation } from "../lib/normalizeConversation.js";
+import { normalizeMessage } from "../lib/normalizeMessage.js";
+import {
+  COACH_REPLY_FALLBACK_TEXT,
+  generateCoachReply,
+  runCoachReplyEnrichmentJob,
+} from "../services/coachChatReply.js";
+import {
+  eventFromPayload,
+  logPatternAnalyticsEvent,
+} from "../services/patternAnalytics.js";
+import { recordPatternSavedFromAnalyticsEvent } from "../services/patternPerformanceStore.js";
+import {
+  buildBaseFingerprint,
+  buildFingerprint,
+  extractCallReadyText,
+  persistPatternIntelEvent,
+  responseSignature,
+} from "../services/patternIntelligence.js";
+import { coachInsightFraming } from "../services/coachInsightFraming.js";
+import {
+  getFreeTierUsageSnapshot,
+  getNormalizedUsageForUser,
+} from "../services/freeTierUsage.js";
+import { getPlanEntitlements } from "../services/planEntitlements.js";
+import { parseCoachReplyMode } from "../types/coachReplyMode.js";
+import { resolvePrecallDepthFromBody } from "../types/preCallDepth.js";
+
+const BYPASS_LIMITS = process.env.BYPASS_USAGE_LIMITS === "true";
 
 /**
  * Derive a short, readable conversation title from the first user message.
@@ -18,6 +51,25 @@ function deriveTitle(message: string): string {
   return capped.replace(/[.,!?;:]+$/, "").trim() || "Conversation";
 }
 
+function isMeaningfulUserMessage(message: string): boolean {
+  const trimmed = message.trim();
+  if (trimmed.length < 4) return false;
+  // Require at least one alphanumeric character to avoid titling on punctuation-only content.
+  return /[a-zA-Z0-9]/.test(trimmed);
+}
+
+function isMetaInstruction(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.startsWith("rename") ||
+    normalized.startsWith("title this") ||
+    normalized.startsWith("call this") ||
+    normalized.includes("name this conversation") ||
+    normalized.includes("set the title")
+  );
+}
+
 type MessageRow = {
   id: string;
   conversation_id: string;
@@ -26,6 +78,8 @@ type MessageRow = {
   content: string;
   objection_type: string | null;
   strategy_used: string | null;
+  tone_used: string | null;
+  structured_reply?: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -33,22 +87,35 @@ async function getOwnedConversation(
   supabase: SupabaseClient,
   conversationId: string,
   userId: string
-): Promise<{ id: string; title: string } | null> {
+): Promise<ReturnType<typeof normalizeConversation> | null> {
+  // Use select("*"): explicit column lists fail when optional migrations are not applied.
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, title")
+    .select("*")
     .eq("id", conversationId)
     .eq("user_id", userId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data;
+  if (!data) return null;
+  return normalizeConversation(data as Record<string, unknown>);
 }
 
 export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /api/messages — send user message, generate AI reply, persist both
   fastify.post<{
-    Body: { conversation_id?: string; content?: string };
+    Body: {
+      conversation_id?: string;
+      content?: string;
+      objection_category?: string;
+      tone_override?: string;
+      /** `live` (default) | `precall` — dual-mode coach output (see `coachReplyMode` types). */
+      coach_reply_mode?: string;
+      /** Preferred: `instant` | `deep`. */
+      precall_depth?: string;
+      /** @deprecated Use `precall_depth`; still accepted for backward compatibility. */
+      pre_call_depth?: string;
+    };
   }>("/messages", {
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
@@ -72,7 +139,7 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { data: priorRows, error: priorErr } = await supabase
         .from("messages")
-        .select("role, content")
+        .select("role, content, structured_reply, strategy_used")
         .eq("conversation_id", conversationId)
         .eq("user_id", userId)
         .order("created_at", { ascending: true });
@@ -84,6 +151,15 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
       const priorMessages = (priorRows ?? []).map((r) => ({
         role: r.role === "ai" ? ("ai" as const) : ("user" as const),
         content: String(r.content ?? ""),
+        structuredReply:
+          r.structured_reply != null &&
+          typeof r.structured_reply === "object"
+            ? (r.structured_reply as Record<string, unknown>)
+            : null,
+        patternKey:
+          typeof (r as { strategy_used?: unknown }).strategy_used === "string"
+            ? ((r as { strategy_used: string }).strategy_used as string)
+            : null,
       }));
 
       const { data: userRow, error: userInsErr } = await supabase
@@ -103,12 +179,138 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
         });
       }
 
-      const assistantText = await generateCoachReply({
+      const usageRow = await getNormalizedUsageForUser(supabase, userId);
+      const planType = usageRow?.plan ?? "free";
+      const entitlements = getPlanEntitlements(planType);
+      const dealContextForCoach =
+        entitlements.structuredDealContext ? conv.deal_context : null;
+      if (!entitlements.structuredDealContext && conv.deal_context != null) {
+        // TEMP: remove after Pro gate validation — logs when coach ignores persisted deal_context
+        request.log.info(
+          { userId, conversationId, planType },
+          "deal_context stripped: not Pro"
+        );
+      }
+
+      const coachReplyMode = parseCoachReplyMode(request.body?.coach_reply_mode);
+      const precallDepthResolved =
+        coachReplyMode === "precall"
+          ? resolvePrecallDepthFromBody(
+              request.body?.precall_depth,
+              request.body?.pre_call_depth
+            )
+          : undefined;
+
+      const coachT0 = Date.now();
+      const coachReply = await generateCoachReply({
+        supabase,
+        userId,
         conversationTitle: conv.title ?? "Conversation",
         priorMessages,
         userMessage: content,
+        toneOverride: request.body?.tone_override ?? null,
+        dealContext: dealContextForCoach,
+        clientContext: conv.client_context,
+        objectionType: request.body?.objection_category ?? null,
+        conversationId,
+        coachReplyMode,
+        ...(precallDepthResolved !== undefined
+          ? { precallDepth: precallDepthResolved }
+          : {}),
       });
+      if (coachReply.ok && coachReply.timingMs) {
+        request.log.info(
+          {
+            conversationId,
+            userId,
+            coachTimingMs: coachReply.timingMs,
+            wallMs: Date.now() - coachT0,
+          },
+          "coach_reply_timing"
+        );
+      }
 
+      // DEV ONLY: Allows bypassing usage limits to test backend flows (e.g. deal calculators)
+      if (
+        coachReply.ok === false &&
+        coachReply.error === "limit_reached" &&
+        !BYPASS_LIMITS
+      ) {
+        // Keep conversation activity ordering correct even when AI is blocked by plan limit.
+        await supabase
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId)
+          .eq("user_id", userId);
+
+        const usage = await getFreeTierUsageSnapshot(supabase, userId);
+        return reply.status(200).send({
+          error: "limit_reached",
+          message:
+            (coachReply as any)?.message ??
+            "You've reached your usage limit. Upgrade to continue.",
+          upgradeRequired: true,
+          userMessage: userRow as MessageRow,
+          updatedTitle: null,
+          ...(usage != null ? { usage } : {}),
+        });
+      }
+
+      // Phase 5.0 alignment: even when BYPASS_USAGE_LIMITS is enabled, a known monetization
+      // block must return the friendly payload (never a generic 500).
+      if (coachReply.ok === false && coachReply.error === "limit_reached") {
+        await supabase
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId)
+          .eq("user_id", userId);
+
+        const usage = await getFreeTierUsageSnapshot(supabase, userId);
+        return reply.status(200).send({
+          error: "limit_reached",
+          message:
+            (coachReply as any)?.message ??
+            "You've reached your usage limit. Upgrade to continue.",
+          upgradeRequired: true,
+          userMessage: userRow as MessageRow,
+          updatedTitle: null,
+          ...(usage != null ? { usage } : {}),
+        });
+      }
+
+      if (!coachReply.ok) {
+        return reply.status(500).send({ error: "Failed to generate assistant reply" });
+      }
+      const assistantText = coachReply.text;
+      const structuredReply = coachReply.structuredReply;
+
+      if (
+        assistantText.trim() === COACH_REPLY_FALLBACK_TEXT ||
+        coachReply.fallbackUsed
+      ) {
+        request.log.warn(
+          {
+            conversationId,
+            userId,
+            fallbackUsed: coachReply.fallbackUsed ?? false,
+          },
+          "[COACH_REPLY_PAYLOAD]"
+        );
+        console.log(
+          "[COACH_REPLY_PAYLOAD]",
+          JSON.stringify(
+            {
+              text: assistantText,
+              structured_reply: structuredReply,
+              fallbackUsed: coachReply.fallbackUsed ?? false,
+            },
+            null,
+            2
+          )
+        );
+      }
+
+      const pa = coachReply.patternAnalytics;
       const { data: aiRow, error: aiInsErr } = await supabase
         .from("messages")
         .insert({
@@ -116,6 +318,10 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
           user_id: userId,
           role: "ai",
           content: assistantText,
+          objection_type: pa?.objectionCategory ?? null,
+          strategy_used: pa?.patternKey ?? null,
+          tone_used: coachReply.appliedTone ?? null,
+          structured_reply: structuredReply ?? null,
         })
         .select()
         .single();
@@ -126,11 +332,118 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
         });
       }
 
-      // Auto-title: fire only on the first message, only if title is still
-      // the default. Derived deterministically from message content — no AI
-      // call, no extra round-trip. Merged into the updated_at update.
-      const isFirstMessage = priorMessages.length === 0;
-      const needsAutoTitle = isFirstMessage && conv.title === "New Conversation";
+      // Phase 4.4 — persist lean pattern intelligence (best-effort; never blocks messaging).
+      try {
+        const coachMode = coachReply.structuredReply?.coachReplyMode ?? coachReplyMode;
+        const objectionFamily =
+          typeof structuredReply?.primaryObjectionType === "string"
+            ? structuredReply.primaryObjectionType
+            : null;
+        // Live mode structured replies may omit `objectionType`; fall back to the already-resolved,
+        // deterministic router classification so repetition signals actually key on the objection.
+        const objectionType =
+          typeof structuredReply?.objectionType === "string"
+            ? structuredReply.objectionType
+            : pa?.objectionCategory ?? null;
+        const tone = coachReply.appliedTone ?? null;
+        const baseFingerprint = buildBaseFingerprint({
+          objectionFamily,
+          objectionType,
+          tone,
+          coachReplyMode: coachMode,
+          dealType: pa?.dealType ?? null,
+        });
+        const fingerprint = buildFingerprint({
+          baseFingerprint,
+          strategyTag: pa?.patternKey ?? null,
+          patternKey: pa?.patternKey ?? null,
+        });
+        const primarySig = responseSignature(
+          (structuredReply as any)?.rebuttals?.[0]?.sayThis ?? assistantText
+        );
+        const callReadySig = responseSignature(
+          extractCallReadyText({
+            coachReplyMode: coachMode,
+            structuredReply: structuredReply ?? null,
+          })
+        );
+        await persistPatternIntelEvent(supabase, {
+          user_id: userId,
+          conversation_id: conversationId,
+          turn_id: aiRow.id,
+          created_at: aiRow.created_at,
+          coach_reply_mode: coachMode,
+          deal_type: pa?.dealType ?? null,
+          objection_family: objectionFamily,
+          objection_type: objectionType,
+          tone,
+          strategy_tag: pa?.patternKey ?? null,
+          pattern_key: pa?.patternKey ?? null,
+          base_fingerprint: baseFingerprint,
+          fingerprint,
+          primary_response_signature: primarySig,
+          call_ready_signature: callReadySig,
+          had_structured_reply: structuredReply != null,
+          was_saved: false,
+          confidence_support: coachReply.patternSelection?.confidenceSupport ?? null,
+          candidate_count:
+            coachReply.patternSelection?.decisionIntelligence?.candidateCount ?? null,
+          unique_pattern_key_count:
+            coachReply.patternSelection?.decisionIntelligence?.uniquePatternKeyCount ?? null,
+          score_gap:
+            coachReply.patternSelection?.decisionIntelligence?.scoreGap ?? null,
+          runner_up_pattern_key:
+            coachReply.patternSelection?.decisionIntelligence?.runnerUpPatternKey ?? null,
+          anti_repeat_applied:
+            typeof coachReply.patternSelection?.antiRepeatApplied === "boolean"
+              ? coachReply.patternSelection!.antiRepeatApplied
+              : null,
+          anti_repeat_reason:
+            coachReply.patternSelection?.antiRepeatReason ?? null,
+          dvl_applied:
+            typeof coachReply.patternSelection?.decisionIntelligence?.dvlApplied === "boolean"
+              ? coachReply.patternSelection!.decisionIntelligence!.dvlApplied
+              : null,
+          variant_index:
+            coachReply.patternSelection?.decisionIntelligence?.variantIndex ?? null,
+          debug: {
+            selectedPatternKey: coachReply.patternSelection?.selectedPatternKey ?? null,
+            selectedSource: coachReply.patternSelection?.selectedSource ?? null,
+          },
+        });
+      } catch {
+        /* best-effort */
+      }
+
+      if (coachReply.ok && coachReply.deferredEnrichment) {
+        void runCoachReplyEnrichmentJob(fastify.supabase, {
+          ...coachReply.deferredEnrichment,
+          messageId: aiRow.id,
+          conversationId,
+          userId,
+        });
+      }
+
+      // 4.9 prep — patternKey priority: (1) reuse coachReply.patternAnalytics as produced at generation (same patternKey string); (2) else skip (no alternate metadata on the row in this phase).
+      if (coachReply.patternAnalytics) {
+        const savedEvent = eventFromPayload(
+          "response_saved",
+          coachReply.patternAnalytics,
+          conversationId
+        );
+        logPatternAnalyticsEvent(savedEvent);
+        void recordPatternSavedFromAnalyticsEvent(supabase, savedEvent);
+      }
+
+      // Auto-title once after the first meaningful user message while title is default.
+      const priorMeaningfulUserCount = priorMessages.filter(
+        (m) => m.role === "user" && isMeaningfulUserMessage(m.content)
+      ).length;
+      const needsAutoTitle =
+        conv.title === "New Conversation" &&
+        priorMeaningfulUserCount === 0 &&
+        isMeaningfulUserMessage(content) &&
+        !isMetaInstruction(content);
       const autoTitle = needsAutoTitle ? deriveTitle(content) : null;
 
       const conversationUpdate: Record<string, string> = {
@@ -144,11 +457,53 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
         .eq("id", conversationId)
         .eq("user_id", userId);
 
+      const coachInsight =
+        coachReply.patternAnalytics?.objectionCategory != null
+          ? coachInsightFraming(coachReply.patternAnalytics.objectionCategory)
+          : undefined;
+
+      const assistantCoachMode =
+        coachReply.structuredReply?.coachReplyMode ?? coachReplyMode;
+      const isLiveAssistant = assistantCoachMode === "live";
+
+      const assistantPayload = aiRow as MessageRow & {
+        structured_reply?: {
+          rebuttals?: { sayThis?: string }[];
+          objectionType?: string | null;
+        } | null;
+      };
+      console.log("[FINAL_API_PAYLOAD]", {
+        content: assistantPayload.content ?? null,
+        structuredReplyExists: !!assistantPayload.structured_reply,
+        firstSayThis:
+          assistantPayload.structured_reply?.rebuttals?.[0]?.sayThis ?? null,
+        objectionType:
+          assistantPayload.structured_reply?.objectionType ?? null,
+      });
+
       return reply.status(201).send({
         userMessage: userRow as MessageRow,
         assistantMessage: aiRow as MessageRow,
+        coach_reply_mode: assistantCoachMode,
         // Include updated title so the frontend can update without a refetch
         updatedTitle: autoTitle ?? null,
+        ...(!isLiveAssistant &&
+          coachReply.deferredEnrichment == null &&
+          coachReply.patternInsights != null && {
+            patternInsights: coachReply.patternInsights,
+          }),
+        ...(!isLiveAssistant &&
+          coachReply.deferredEnrichment == null &&
+          coachReply.explanation != null && {
+            explanation: coachReply.explanation,
+          }),
+        ...(!isLiveAssistant &&
+          coachReply.deferredEnrichment == null &&
+          coachInsight != null && { coachInsight }),
+        ...(coachReply.usage != null && { usage: coachReply.usage }),
+        ...(coachReply.deferredEnrichment != null && {
+          enrichmentPending: true,
+        }),
       });
     },
   });
@@ -173,7 +528,10 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
         .order("created_at", { ascending: true });
 
       if (error) return reply.status(500).send({ error: error.message });
-      return reply.send(data ?? []);
+      const rows = data ?? [];
+      return reply.send(
+        rows.map((r) => normalizeMessage(r as Record<string, unknown>))
+      );
     },
   });
 

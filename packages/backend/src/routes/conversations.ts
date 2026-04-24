@@ -4,6 +4,20 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import type { ClientContext } from "../types/clientContext.js";
+import type { DealContext } from "../types/dealContext.js";
+import { getNormalizedUsageForUser } from "../services/freeTierUsage.js";
+import { getPlanEntitlements } from "../services/planEntitlements.js";
+
+type ConversationRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  deal_context: DealContext | null;
+  client_context?: ClientContext | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export async function conversationRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /api/conversations
@@ -17,7 +31,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
         .order("updated_at", { ascending: false });
 
       if (error) return reply.status(500).send({ error: error.message });
-      return reply.send(data);
+      return reply.send((data ?? []) as ConversationRow[]);
     },
   });
 
@@ -36,7 +50,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
 
       if (error) return reply.status(500).send({ error: error.message });
       if (!data) return reply.status(404).send({ error: "Conversation not found" });
-      return reply.send(data);
+      return reply.send(data as ConversationRow);
     },
   });
 
@@ -53,36 +67,120 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
         .single();
 
       if (error) return reply.status(500).send({ error: error.message });
-      return reply.status(201).send(data);
+      return reply.status(201).send(data as ConversationRow);
     },
   });
 
-  // PATCH /api/conversations/:id
-  fastify.patch<{ Params: { id: string }; Body: { title: string } }>(
-    "/conversations/:id",
-    {
-      preHandler: [fastify.authenticate],
-      handler: async (request, reply) => {
-        const { id } = request.params;
-        const { title } = request.body;
+  // PATCH /api/conversations/:id — optional `title`, `deal_context`, and/or `client_context`
+  fastify.patch<{
+    Params: { id: string };
+    Body: {
+      title?: string;
+      deal_context?: DealContext | null;
+      client_context?: ClientContext | null;
+    };
+  }>("/conversations/:id", {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
+      const { id } = request.params;
+      const body = request.body ?? {};
+      const hasTitleKey = Object.prototype.hasOwnProperty.call(body, "title");
+      const hasDealContextKey = Object.prototype.hasOwnProperty.call(
+        body,
+        "deal_context"
+      );
+      const hasClientContextKey = Object.prototype.hasOwnProperty.call(
+        body,
+        "client_context"
+      );
 
-        // Only update title — not updated_at.
-        // updated_at tracks message activity for sort order.
-        // A manual rename should not bubble a conversation to the top.
-        const { data, error } = await fastify.supabase
-          .from("conversations")
-          .update({ title })
-          .eq("id", id)
-          .eq("user_id", request.user.id)
-          .select()
-          .single();
+      if (!hasTitleKey && !hasDealContextKey && !hasClientContextKey) {
+        return reply.status(400).send({
+          error:
+            "Provide title, deal_context, and/or client_context to update.",
+        });
+      }
 
-        if (error) return reply.status(500).send({ error: error.message });
-        if (!data) return reply.status(404).send({ error: "Conversation not found" });
-        return reply.send(data);
-      },
-    }
-  );
+      const updates: Record<string, unknown> = {};
+
+      if (hasTitleKey) {
+        const title = typeof body.title === "string" ? body.title.trim() : "";
+        if (!title) {
+          return reply
+            .status(400)
+            .send({ error: "title cannot be empty when provided." });
+        }
+        if (title === "New Conversation") {
+          return reply.status(400).send({
+            error: "Please choose a more specific title.",
+          });
+        }
+        updates.title = title;
+      }
+
+      if (hasDealContextKey) {
+        const dc = body.deal_context;
+        if (dc !== null && (typeof dc !== "object" || Array.isArray(dc))) {
+          return reply.status(400).send({ error: "Invalid deal_context" });
+        }
+        const usageRow = await getNormalizedUsageForUser(
+          fastify.supabase,
+          request.user.id
+        );
+        const planType = usageRow?.plan ?? "free";
+        const entitlements = getPlanEntitlements(planType);
+        if (dc !== null && !entitlements.structuredDealContext) {
+          return reply.status(403).send({
+            error: "Structured deal context requires a Pro plan.",
+            code: "deal_context_pro_required",
+          });
+        }
+        let serialized: unknown;
+        try {
+          serialized = dc === null ? null : JSON.parse(JSON.stringify(dc));
+        } catch {
+          return reply
+            .status(400)
+            .send({ error: "deal_context is not JSON-serializable" });
+        }
+        updates.deal_context = serialized;
+      }
+
+      if (hasClientContextKey) {
+        const cc = body.client_context;
+        if (cc !== null && (typeof cc !== "object" || Array.isArray(cc))) {
+          return reply.status(400).send({ error: "Invalid client_context" });
+        }
+        let serializedCc: unknown;
+        try {
+          serializedCc = cc === null ? null : JSON.parse(JSON.stringify(cc));
+        } catch {
+          return reply
+            .status(400)
+            .send({ error: "client_context is not JSON-serializable" });
+        }
+        updates.client_context = serializedCc;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return reply.status(400).send({ error: "Nothing to update." });
+      }
+
+      // Do not touch updated_at — it tracks message activity for sort order.
+
+      const { data, error } = await fastify.supabase
+        .from("conversations")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", request.user.id)
+        .select()
+        .single();
+
+      if (error) return reply.status(500).send({ error: error.message });
+      if (!data) return reply.status(404).send({ error: "Conversation not found" });
+      return reply.send(data as ConversationRow);
+    },
+  });
 
   // DELETE /api/conversations/:id
   fastify.delete<{ Params: { id: string } }>("/conversations/:id", {

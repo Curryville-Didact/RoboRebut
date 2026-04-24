@@ -2,6 +2,9 @@
 create table public.profiles (
   id uuid references auth.users on delete cascade primary key,
   email text,
+  plan_type text default 'free' not null,
+  usage_count integer default 0 not null,
+  usage_reset_at timestamptz default now() not null,
   created_at timestamptz default now() not null
 );
 
@@ -10,6 +13,8 @@ create table public.conversations (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users on delete cascade not null,
   title text default 'New Conversation',
+  deal_context jsonb,
+  client_context jsonb,
   created_at timestamptz default now() not null,
   updated_at timestamptz default now() not null
 );
@@ -23,6 +28,8 @@ create table public.messages (
   content text not null,
   objection_type text,
   strategy_used text,
+  tone_used text,
+  structured_reply jsonb,
   created_at timestamptz default now() not null
 );
 
@@ -33,6 +40,7 @@ create table public.saved_responses (
   label text not null,
   content text not null,
   category text,
+  metadata jsonb,
   created_at timestamptz default now() not null
 );
 

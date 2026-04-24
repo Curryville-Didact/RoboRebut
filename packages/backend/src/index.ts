@@ -15,6 +15,8 @@ dotenv.config({ path: envPath, override: true });
  */
 async function main() {
   const { config } = await import("./config.js");
+  const { logLlmStartupStatus } = await import("./services/coachChatReply.js");
+  logLlmStartupStatus();
   const { createServer } = await import("./server.js");
 
   const app = await createServer();

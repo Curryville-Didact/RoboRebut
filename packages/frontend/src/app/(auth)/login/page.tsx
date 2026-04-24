@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,8 +23,10 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
-    router.refresh();
+    // Hard navigation avoids racing RSC fetch with cookie/session propagation after sign-in.
+    // router.push + router.refresh() together can abort the /dashboard flight and log
+    // "Failed to fetch RSC payload … TypeError: Load failed" (then full navigation works).
+    window.location.assign("/dashboard");
   }
 
   return (
@@ -72,6 +72,12 @@ export default function LoginPage() {
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+
+        <p className="text-center text-sm text-gray-400">
+          <a href="/forgot-password" className="text-white underline">
+            Forgot your password?
+          </a>
+        </p>
 
         <p className="text-center text-sm text-gray-400">
           Don&apos;t have an account?{" "}

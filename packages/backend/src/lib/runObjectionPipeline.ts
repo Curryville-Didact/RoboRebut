@@ -1,3 +1,12 @@
+/**
+ * runObjectionPipeline — NON-PRODUCTION support/demo/testing pipeline.
+ *
+ * Powers the legacy `INPUT → CLASSIFY → STRATEGIZE → GENERATE → EVALUATE` flow used by the
+ * unauthenticated `/ws` demo in `server.ts`. It is not invoked by `POST /api/messages` or
+ * `coachChatReply`. Do not extend Phase 4.4 / production ranking here; build on
+ * `coachChatReply` + `resolveObjectionResponsePatternWithSelection` instead.
+ */
+
 import type {
   RawInput,
   NormalizedInput,
@@ -8,12 +17,13 @@ import type {
   InteractionLog,
   ObjectionType,
 } from "../types/pipeline.js";
+import { getPlanEntitlements } from "../services/planEntitlements.js";
 import { logInteraction, logIfImportant } from "./logger.js";
 
 export async function runObjectionPipeline(input: RawInput) {
   const normalized = normalizeInput(input);
   const classification = classifyInput(normalized);
-  const strategy = chooseStrategy(classification);
+  const strategy = chooseStrategy(classification, { planType: input.planType });
   const generated = generateResponse(normalized, classification, strategy);
   const evaluation = evaluateResponse(generated, strategy);
 
@@ -286,7 +296,38 @@ function classifyInput(input: NormalizedInput): ClassificationResult {
   };
 }
 
-function chooseStrategy(classification: ClassificationResult): StrategyResult {
+type AdvancedStrategyTag =
+  | "risk_reversal"
+  | "financial_reframe"
+  | "urgency_close"
+  | "decision_isolation";
+
+function chooseStrategy(
+  classification: ClassificationResult,
+  options?: { planType?: string | null }
+): StrategyResult {
+  const baseStrategy = chooseBaseStrategy(classification);
+  const entitlements = getPlanEntitlements(options?.planType);
+  if (!entitlements.advancedStrategies) {
+    return baseStrategy;
+  }
+
+  const advancedTag = getAdvancedStrategyTag(classification.type);
+  if (!advancedTag) {
+    return baseStrategy;
+  }
+
+  return {
+    ...baseStrategy,
+    tag: advancedTag,
+    structure: [
+      ...baseStrategy.structure,
+      advancedStrategyInstruction(advancedTag),
+    ],
+  };
+}
+
+function chooseBaseStrategy(classification: ClassificationResult): StrategyResult {
   switch (classification.type) {
     case "price":
       return {
@@ -387,6 +428,40 @@ function chooseStrategy(classification: ClassificationResult): StrategyResult {
           "move conversation forward",
         ],
       };
+  }
+}
+
+function getAdvancedStrategyTag(
+  objectionType: ObjectionType
+): AdvancedStrategyTag | undefined {
+  switch (objectionType) {
+    case "trust":
+      return "risk_reversal";
+    case "price":
+      return "financial_reframe";
+    case "timing":
+      return "urgency_close";
+    case "authority":
+      return "decision_isolation";
+    default:
+      return undefined;
+  }
+}
+
+function advancedStrategyInstruction(tag: AdvancedStrategyTag): string {
+  switch (tag) {
+    case "risk_reversal":
+      return "layer in risk reversal by reducing perceived downside with concrete proof, validation, or a safe next step";
+    case "financial_reframe":
+      return "layer in financial reframe by anchoring on ROI, cost of delay, or the economics of staying the same";
+    case "urgency_close":
+      return "layer in urgency close by making the next decision point concrete without sounding frantic";
+    case "decision_isolation":
+      return "layer in decision isolation by separating internal approval mechanics from actual fit or buyer interest";
+    default: {
+      const _x: never = tag;
+      return _x;
+    }
   }
 }
 
