@@ -4,6 +4,7 @@ dist/
 build/
 .env
 . env
+*.env
 .env.local
 .env.*.local
 *.log
@@ -19,3 +20,6 @@ uploads/
 
 # Supabase CLI local temp
 supabase/.temp/
+
+# Explicit local backend env (defense-in-depth)
+packages/backend/.env
