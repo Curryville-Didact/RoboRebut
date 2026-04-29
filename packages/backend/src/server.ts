@@ -31,6 +31,7 @@ import { adminIntelligenceRoutes } from "./routes/adminIntelligence.js";
 import { integrationsRoutes } from "./routes/integrations.js";
 import { founderSupportRoutes } from "./routes/founderSupport.js";
 import { founderAnalyticsRoutes } from "./routes/founderAnalytics.js";
+import { founderOperationsRoutes } from "./routes/founderOperations.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
@@ -83,6 +84,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(integrationsRoutes, { prefix: "/api" });
   await app.register(founderSupportRoutes, { prefix: "/api" });
   await app.register(founderAnalyticsRoutes, { prefix: "/api" });
+  await app.register(founderOperationsRoutes, { prefix: "/api" });
 
   app.get(
     "/api/me",

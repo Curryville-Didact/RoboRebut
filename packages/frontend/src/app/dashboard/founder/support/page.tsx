@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { isFounderEmail } from "@/lib/founder";
 import { FounderSupportClient } from "./supportClient";
 
-export default async function FounderSupportPage() {
+export default async function FounderSupportPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ email?: string; userId?: string }>;
+}) {
   let userEmail = "";
   try {
     const supabase = await createClient();
@@ -30,6 +34,10 @@ export default async function FounderSupportPage() {
     );
   }
 
+  const params = (await searchParams) ?? {};
+  const initialEmail = typeof params.email === "string" ? params.email : "";
+  const initialUserId = typeof params.userId === "string" ? params.userId : "";
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -44,7 +52,11 @@ export default async function FounderSupportPage() {
         </Link>
       </div>
 
-      <FounderSupportClient apiBase={API_URL} />
+      <FounderSupportClient
+        apiBase={API_URL}
+        initialEmail={initialEmail}
+        initialUserId={initialUserId}
+      />
     </div>
   );
 }

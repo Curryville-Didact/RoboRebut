@@ -68,9 +68,17 @@ function Section({
   );
 }
 
-export function FounderSupportClient({ apiBase }: { apiBase: string }) {
-  const [email, setEmail] = useState("");
-  const [userId, setUserId] = useState("");
+export function FounderSupportClient({
+  apiBase,
+  initialEmail = "",
+  initialUserId = "",
+}: {
+  apiBase: string;
+  initialEmail?: string;
+  initialUserId?: string;
+}) {
+  const [email, setEmail] = useState(initialEmail);
+  const [userId, setUserId] = useState(initialUserId);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);

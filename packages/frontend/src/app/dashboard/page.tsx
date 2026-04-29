@@ -295,21 +295,23 @@ async function syncEntitlement(token: string): Promise<void> {
       <Suspense fallback={null}>
         <UpgradeSuccessNotice />
       </Suspense>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Conversations</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Open a thread to run Live or precall coaching.
-          </p>
+      <div className="sticky top-0 z-20 -mx-8 border-b border-white/10 bg-black/80 px-8 py-6 backdrop-blur supports-[backdrop-filter]:bg-black/60">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-white">Conversations</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Open a thread to run Live or precall coaching.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleCreateConversation()}
+            disabled={creating}
+            className="shrink-0 rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-50 shadow-[0_0_24px_rgba(16,185,129,0.12)] transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {creating ? "Creating…" : "+ New Conversation"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void handleCreateConversation()}
-          disabled={creating}
-          className="shrink-0 rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-50 shadow-[0_0_24px_rgba(16,185,129,0.12)] transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {creating ? "Creating…" : "+ New Conversation"}
-        </button>
       </div>
 
       {error ? (

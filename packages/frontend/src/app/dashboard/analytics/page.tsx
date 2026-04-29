@@ -8,6 +8,7 @@ import { safeFetchJSON } from "@/lib/safeFetch";
 import { createClient } from "@/lib/supabase/server";
 import { isFounderEmail } from "@/lib/founder";
 import { DashboardEmptyState, DashboardErrorPanel } from "@/components/dashboard/DashboardEmptyState";
+import { FounderOperationsSnapshot } from "@/components/dashboard/FounderOperationsSnapshot";
 
 type AnalyticsEvent = {
   eventName: string;
@@ -23,7 +24,55 @@ type AnalyticsEvent = {
   surface?: string | null;
   ctaLabel?: string;
   ctaGroup?: string;
+  metadata?: Record<string, unknown>;
   serverTimestamp: string;
+};
+
+function readMetadataString(
+  metadata: Record<string, unknown> | undefined,
+  keys: string[]
+): string | null {
+  if (!metadata) return null;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function safeRate(n: number, d: number): number | null {
+  if (!Number.isFinite(n) || !Number.isFinite(d) || d <= 0) return null;
+  return n / d;
+}
+
+function formatPercent(rate: number | null): string {
+  if (rate == null || !Number.isFinite(rate)) return "\u2014";
+  const pct = Math.max(0, Math.min(1, rate)) * 100;
+  const digits = pct >= 10 ? 0 : 1;
+  return `${pct.toFixed(digits)}%`;
+}
+
+function countByKey(
+  events: AnalyticsEvent[],
+  getKey: (e: AnalyticsEvent) => string | null
+): Array<{ key: string; count: number }> {
+  const m = new Map<string, number>();
+  for (const e of events) {
+    const k = getKey(e);
+    if (!k) continue;
+    m.set(k, (m.get(k) ?? 0) + 1);
+  }
+  return [...m.entries()]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+}
+
+type HighIntentFlag = {
+  userEmail: string | null;
+  userId: string | null;
+  signal: string;
+  evidenceCount: number;
+  actionLabel: string;
 };
 
 type AnalyticsSummary = {
@@ -193,17 +242,19 @@ export default async function AnalyticsPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Founder Analytics</h1>
-          <p className="mt-1 text-sm text-gray-400">
-            Revenue intent, product activation, and plan-tagged telemetry (founder-only).
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2 text-sm">
-          <Link href="/dashboard" className="text-gray-400 underline hover:text-white">
-            Back to conversations
-          </Link>
+      <div className="sticky top-0 z-20 -mx-8 border-b border-white/10 bg-black/80 px-8 py-6 backdrop-blur supports-[backdrop-filter]:bg-black/60">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Founder Analytics</h1>
+            <p className="mt-1 text-sm text-gray-400">
+              Revenue intent, product activation, and plan-tagged telemetry (founder-only).
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2 text-sm">
+            <Link href="/dashboard" className="text-gray-400 underline hover:text-white">
+              Back to conversations
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -245,6 +296,8 @@ export default async function AnalyticsPage({
           </div>
         </div>
       ) : null}
+
+      <FounderOperationsSnapshot apiBase={API_URL} />
 
       {hasAnyEvents ? (
         <>
@@ -343,6 +396,391 @@ export default async function AnalyticsPage({
               ))}
             </div>
           </section>
+
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">
+                Monetization Intelligence
+              </h2>
+              <p className="mt-1 max-w-3xl text-xs text-gray-500">
+                Conversion metrics. Explicit funnel events only. Drop-off from previous step. No inference from generic plan tags.
+              </p>
+            </div>
+
+            {(() => {
+              const pricingViews = count("pricing_page_view");
+              const starterClicks = count("pricing_starter_click");
+              const proClicks = count("pricing_pro_click");
+              const teamDemoClicks = count("pricing_team_demo_click");
+              const signinClicks = count("pricing_signin_click");
+              const pricingClicksTotal = starterClicks + proClicks + teamDemoClicks;
+
+              const upgradeNudgeShown = count("upgrade_nudge_shown");
+              const upgradeNudgeClicked = count("upgrade_nudge_clicked");
+              const upgradeNudgeDismissed = count("upgrade_nudge_dismissed");
+
+              const pricingViewToClickRate = safeRate(pricingClicksTotal, pricingViews);
+              const clickToSigninRate = safeRate(signinClicks, pricingClicksTotal);
+              const upgradeNudgeClickRate = safeRate(upgradeNudgeClicked, upgradeNudgeShown);
+              const upgradeNudgeDismissRate = safeRate(upgradeNudgeDismissed, upgradeNudgeShown);
+
+              const dropoffRows: Array<{
+                label: string;
+                count: number;
+                prev: number | null;
+              }> = [
+                { label: "Pricing Page View", count: pricingViews, prev: null },
+                { label: "Plan CTA Click", count: pricingClicksTotal, prev: pricingViews },
+                { label: "Sign-in Click", count: signinClicks, prev: pricingClicksTotal },
+                { label: "Upgrade Nudge Shown", count: upgradeNudgeShown, prev: signinClicks },
+                { label: "Upgrade Nudge Clicked", count: upgradeNudgeClicked, prev: upgradeNudgeShown },
+              ];
+
+              const planRows = [
+                { label: "Starter", event: "pricing_starter_click", count: starterClicks },
+                { label: "Pro", event: "pricing_pro_click", count: proClicks },
+                { label: "Team", event: "pricing_team_demo_click", count: teamDemoClicks },
+              ];
+
+              const revenueIntentEvents = eventsToShow.filter((e) =>
+                [
+                  "pricing_page_view",
+                  "pricing_starter_click",
+                  "pricing_pro_click",
+                  "pricing_team_demo_click",
+                  "pricing_signin_click",
+                  "upgrade_nudge_shown",
+                  "upgrade_nudge_clicked",
+                  "upgrade_nudge_dismissed",
+                ].includes(e.eventName)
+              );
+
+              const surfaces = countByKey(revenueIntentEvents, (e) =>
+                typeof e.surface === "string" && e.surface.trim() ? e.surface.trim() : null
+              ).slice(0, 10);
+
+              const ctaLabels = countByKey(revenueIntentEvents, (e) =>
+                typeof e.ctaLabel === "string" && e.ctaLabel.trim() ? e.ctaLabel.trim() : null
+              ).slice(0, 10);
+
+              const perUser = new Map<
+                string,
+                {
+                  userEmail: string | null;
+                  userId: string | null;
+                  proClicks: number;
+                  starterClicks: number;
+                  teamClicks: number;
+                  nudgeShown: number;
+                  nudgeClicked: number;
+                }
+              >();
+
+              for (const ev of revenueIntentEvents) {
+                const userEmail = readMetadataString(ev.metadata, ["userEmail", "email"]);
+                const userId = readMetadataString(ev.metadata, ["userId", "user_id"]);
+                const key = userId ? `id:${userId}` : userEmail ? `email:${userEmail}` : "";
+                if (!key) continue;
+                const rec =
+                  perUser.get(key) ?? {
+                    userEmail: userEmail ?? null,
+                    userId: userId ?? null,
+                    proClicks: 0,
+                    starterClicks: 0,
+                    teamClicks: 0,
+                    nudgeShown: 0,
+                    nudgeClicked: 0,
+                  };
+                if (!rec.userEmail && userEmail) rec.userEmail = userEmail;
+                if (!rec.userId && userId) rec.userId = userId;
+                if (ev.eventName === "pricing_pro_click") rec.proClicks += 1;
+                if (ev.eventName === "pricing_starter_click") rec.starterClicks += 1;
+                if (ev.eventName === "pricing_team_demo_click") rec.teamClicks += 1;
+                if (ev.eventName === "upgrade_nudge_shown") rec.nudgeShown += 1;
+                if (ev.eventName === "upgrade_nudge_clicked") rec.nudgeClicked += 1;
+                perUser.set(key, rec);
+              }
+
+              const flags: HighIntentFlag[] = [];
+              for (const rec of perUser.values()) {
+                // No "upgrade completed" event exists in this telemetry set; interpret as "no known upgrade event in this window".
+                if (rec.proClicks >= 2) {
+                  flags.push({
+                    userEmail: rec.userEmail,
+                    userId: rec.userId,
+                    signal: "2+ pro clicks (no known upgrade event)",
+                    evidenceCount: rec.proClicks,
+                    actionLabel: "Review in Support Console",
+                  });
+                }
+                if (rec.starterClicks >= 2) {
+                  flags.push({
+                    userEmail: rec.userEmail,
+                    userId: rec.userId,
+                    signal: "2+ starter clicks (no known upgrade event)",
+                    evidenceCount: rec.starterClicks,
+                    actionLabel: "Review in Support Console",
+                  });
+                }
+                if (rec.teamClicks >= 1) {
+                  flags.push({
+                    userEmail: rec.userEmail,
+                    userId: rec.userId,
+                    signal: "1+ team demo click",
+                    evidenceCount: rec.teamClicks,
+                    actionLabel: "Review in Support Console",
+                  });
+                }
+                if (rec.nudgeShown >= 3 && rec.nudgeClicked === 0) {
+                  flags.push({
+                    userEmail: rec.userEmail,
+                    userId: rec.userId,
+                    signal: "3+ upgrade nudge shown and 0 clicked",
+                    evidenceCount: rec.nudgeShown,
+                    actionLabel: "Review in Support Console",
+                  });
+                }
+              }
+
+              flags.sort(
+                (a, b) =>
+                  b.evidenceCount - a.evidenceCount ||
+                  a.signal.localeCompare(b.signal)
+              );
+
+              return (
+                <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {[
+                      ["pricingViews", pricingViews],
+                      ["pricingClicksTotal", pricingClicksTotal],
+                      ["pricingViewToClickRate", formatPercent(pricingViewToClickRate)],
+                      ["starterClicks", starterClicks],
+                      ["proClicks", proClicks],
+                      ["teamDemoClicks", teamDemoClicks],
+                      ["signinClicks", signinClicks],
+                      ["clickToSigninRate", formatPercent(clickToSigninRate)],
+                      ["upgradeNudgeShown", upgradeNudgeShown],
+                      ["upgradeNudgeClicked", upgradeNudgeClicked],
+                      ["upgradeNudgeDismissed", upgradeNudgeDismissed],
+                      ["upgradeNudgeClickRate", formatPercent(upgradeNudgeClickRate)],
+                      ["upgradeNudgeDismissRate", formatPercent(upgradeNudgeDismissRate)],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                      >
+                        <p className="text-xs text-gray-500">{label}</p>
+                        <p className="mt-2 text-2xl font-semibold text-white">
+                          {typeof value === "number"
+                            ? value.toLocaleString()
+                            : String(value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold">Funnel drop-off table</div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Drop-off from previous step. Explicit funnel events only.
+                        </p>
+                      </div>
+                      <div className="overflow-x-auto rounded-xl border border-white/10">
+                        <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                          <thead className="bg-white/[0.03] text-xs uppercase tracking-wide text-gray-500">
+                            <tr>
+                              <th className="px-3 py-2">step</th>
+                              <th className="px-3 py-2">count</th>
+                              <th className="px-3 py-2">conversion</th>
+                              <th className="px-3 py-2">drop-off</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/10">
+                            {dropoffRows.map((r) => {
+                              const conv = r.prev == null ? null : safeRate(r.count, r.prev);
+                              const drop =
+                                r.prev == null
+                                  ? null
+                                  : safeRate(Math.max(0, r.prev - r.count), r.prev);
+                              return (
+                                <tr key={r.label} className="align-top">
+                                  <td className="px-3 py-2 text-white">{r.label}</td>
+                                  <td className="px-3 py-2 text-gray-300">
+                                    {r.count.toLocaleString()}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-300">{formatPercent(conv)}</td>
+                                  <td className="px-3 py-2 text-gray-300">{formatPercent(drop)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold">Plan CTA conversion breakdown</div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Share of total plan CTA clicks (Starter/Pro/Team).
+                        </p>
+                      </div>
+                      <div className="overflow-x-auto rounded-xl border border-white/10">
+                        <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                          <thead className="bg-white/[0.03] text-xs uppercase tracking-wide text-gray-500">
+                            <tr>
+                              <th className="px-3 py-2">plan</th>
+                              <th className="px-3 py-2">clicks</th>
+                              <th className="px-3 py-2">share</th>
+                              <th className="px-3 py-2">source</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/10">
+                            {planRows.map((r) => (
+                              <tr key={r.event} className="align-top">
+                                <td className="px-3 py-2 text-white">{r.label}</td>
+                                <td className="px-3 py-2 text-gray-300">
+                                  {r.count.toLocaleString()}
+                                </td>
+                                <td className="px-3 py-2 text-gray-300">
+                                  {formatPercent(safeRate(r.count, pricingClicksTotal))}
+                                </td>
+                                <td className="px-3 py-2 text-gray-300">{r.event}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold">Attribution signals</div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Attribution is based only on explicit event names and available metadata. No inference from generic plan tags.
+                        </p>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                            Counts by surface (recent window)
+                          </div>
+                          <div className="mt-2 space-y-1 text-sm">
+                            {surfaces.length === 0 ? (
+                              <p className="text-gray-500">—</p>
+                            ) : (
+                              surfaces.map((r) => (
+                                <div
+                                  key={r.key}
+                                  className="flex items-center justify-between gap-3"
+                                >
+                                  <span className="text-gray-300">{r.key}</span>
+                                  <span className="text-white">{r.count}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                            Counts by CTA label (recent window)
+                          </div>
+                          <div className="mt-2 space-y-1 text-sm">
+                            {ctaLabels.length === 0 ? (
+                              <p className="text-gray-500">—</p>
+                            ) : (
+                              ctaLabels.map((r) => (
+                                <div
+                                  key={r.key}
+                                  className="flex items-center justify-between gap-3"
+                                >
+                                  <span className="text-gray-300">{r.key}</span>
+                                  <span className="text-white">{r.count}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold">High-intent flags</div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          High-intent flags are heuristic and based on available metadata.
+                        </p>
+                      </div>
+                      {flags.length === 0 ? (
+                        <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-400">
+                          No high-intent flags in the current event window (or identifiers missing).
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-xl border border-white/10">
+                          <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                            <thead className="bg-white/[0.03] text-xs uppercase tracking-wide text-gray-500">
+                              <tr>
+                                <th className="px-3 py-2">email</th>
+                                <th className="px-3 py-2">user</th>
+                                <th className="px-3 py-2">signal</th>
+                                <th className="px-3 py-2">evidence</th>
+                                <th className="px-3 py-2">action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {flags.slice(0, 20).map((f, idx) => (
+                                <tr
+                                  key={`${f.signal}-${f.userId ?? f.userEmail ?? idx}`}
+                                  className="align-top"
+                                >
+                                  <td className="px-3 py-2 text-gray-300">
+                                    {f.userEmail ? (
+                                      <Link
+                                        href={`/dashboard/founder/support?email=${encodeURIComponent(
+                                          f.userEmail
+                                        )}`}
+                                        className="underline hover:text-white"
+                                      >
+                                        {f.userEmail}
+                                      </Link>
+                                    ) : (
+                                      "-"
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-300">
+                                    {f.userId ? (
+                                      <Link
+                                        href={`/dashboard/founder/support?userId=${encodeURIComponent(
+                                          f.userId
+                                        )}`}
+                                        className="underline hover:text-white"
+                                      >
+                                        {f.userId}
+                                      </Link>
+                                    ) : (
+                                      "-"
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-white">{f.signal}</td>
+                                  <td className="px-3 py-2 text-gray-300">{f.evidenceCount}</td>
+                                  <td className="px-3 py-2 text-gray-300">{f.actionLabel}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
         </>
       ) : null}
 
@@ -433,22 +871,58 @@ export default async function AnalyticsPage({
                     <th className="px-3 py-2">timestamp</th>
                     <th className="px-3 py-2">event</th>
                     <th className="px-3 py-2">plan</th>
+                    <th className="px-3 py-2">email</th>
+                    <th className="px-3 py-2">user</th>
                     <th className="px-3 py-2">surface</th>
                     <th className="px-3 py-2">cta</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/10">
-                  {eventsToShow.slice(0, 40).map((event, index) => (
-                    <tr key={`${event.serverTimestamp}-${index}`} className="align-top">
-                      <td className="px-3 py-2 text-gray-400">
-                        {new Date(event.serverTimestamp).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2 text-white">{event.eventName}</td>
-                      <td className="px-3 py-2 text-gray-300">{event.planType ?? "-"}</td>
-                      <td className="px-3 py-2 text-gray-300">{event.surface ?? "-"}</td>
-                      <td className="px-3 py-2 text-gray-300">{event.ctaLabel ?? "-"}</td>
-                    </tr>
-                  ))}
+                  {eventsToShow.slice(0, 40).map((event, index) => {
+                    const userEmail = readMetadataString(event.metadata, [
+                      "userEmail",
+                      "email",
+                    ]);
+                    const userId = readMetadataString(event.metadata, [
+                      "userId",
+                      "user_id",
+                    ]);
+                    return (
+                      <tr key={`${event.serverTimestamp}-${index}`} className="align-top">
+                        <td className="px-3 py-2 text-gray-400">
+                          {new Date(event.serverTimestamp).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-white">{event.eventName}</td>
+                        <td className="px-3 py-2 text-gray-300">{event.planType ?? "-"}</td>
+                        <td className="px-3 py-2 text-gray-300">
+                          {userEmail ? (
+                            <Link
+                              href={`/dashboard/founder/support?email=${encodeURIComponent(userEmail)}`}
+                              className="underline hover:text-white"
+                            >
+                              {userEmail}
+                            </Link>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-gray-300">
+                          {userId ? (
+                            <Link
+                              href={`/dashboard/founder/support?userId=${encodeURIComponent(userId)}`}
+                              className="underline hover:text-white"
+                            >
+                              {userId}
+                            </Link>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-gray-300">{event.surface ?? "-"}</td>
+                        <td className="px-3 py-2 text-gray-300">{event.ctaLabel ?? "-"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -198,11 +198,13 @@ export default function SavedResponsesPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">Saved Responses</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Reusable rebuttals from your strongest coaching turns.
-        </p>
+      <div className="sticky top-0 z-20 -mx-8 border-b border-white/10 bg-black/80 px-8 py-6 backdrop-blur supports-[backdrop-filter]:bg-black/60">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">Saved Responses</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Reusable rebuttals from your strongest coaching turns.
+          </p>
+        </div>
       </div>
 
       {error ? (
@@ -228,7 +230,7 @@ export default function SavedResponsesPage() {
         </DashboardEmptyState>
       ) : (
         <>
-          <div className="rounded-xl border border-white/[0.08] bg-black/25 p-4 space-y-3">
+          <div className="sticky top-[92px] z-10 rounded-xl border border-white/[0.08] bg-black/70 p-4 backdrop-blur supports-[backdrop-filter]:bg-black/50 space-y-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
               <label className="flex min-w-[180px] flex-1 flex-col gap-1">
                 <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">

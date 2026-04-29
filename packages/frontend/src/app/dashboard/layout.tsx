@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { BackendWebSocket } from "@/components/BackendWebSocket";
 import { isFounderEmail } from "@/lib/founder";
+import { DashboardViewportLock } from "@/components/dashboard/DashboardViewportLock";
 
 export default async function DashboardLayout({
   children,
@@ -20,9 +21,11 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-black text-white">
+    <>
+      <DashboardViewportLock />
+      <div className="flex h-dvh overflow-hidden bg-black text-white">
       {/* Sidebar */}
-      <aside className="flex w-64 flex-col border-r border-white/10 p-6">
+      <aside className="h-dvh shrink-0 flex w-64 flex-col border-r border-white/10 p-6 overflow-y-auto">
         <div className="mb-8">
           <h1 className="text-xl font-bold">RoboRebut</h1>
           <p className="mt-1 text-xs text-gray-500 truncate">{userEmail}</p>
@@ -99,6 +102,12 @@ export default async function DashboardLayout({
               >
                 Support Console
               </Link>
+              <Link
+                href="/dashboard/founder/analytics/patterns"
+                className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Pattern Intelligence
+              </Link>
             </div>
           ) : null}
         </nav>
@@ -114,10 +123,13 @@ export default async function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto p-8">{children}</main>
+      <main className="flex-1 min-h-0 h-dvh overflow-hidden">
+        <div className="h-full min-h-0 overflow-y-auto p-8">{children}</div>
+      </main>
 
       {/* Backend WS — dashboard only, not auth pages */}
       <BackendWebSocket />
-    </div>
+      </div>
+    </>
   );
 }
