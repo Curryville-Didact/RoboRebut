@@ -36,6 +36,8 @@ import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
 
+// railway deploy trigger: founder operations route rollout
+
 export async function createServer(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
