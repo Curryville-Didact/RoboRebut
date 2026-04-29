@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { BackendWebSocket } from "@/components/BackendWebSocket";
 import { isFounderEmail } from "@/lib/founder";
-import { DashboardViewportLock } from "@/components/dashboard/DashboardViewportLock";
+import DashboardViewportLock from "../../components/dashboard/DashboardViewportLock";
 
 export default async function DashboardLayout({
   children,
@@ -25,106 +25,110 @@ export default async function DashboardLayout({
       <DashboardViewportLock />
       <div className="flex h-dvh overflow-hidden bg-black text-white">
       {/* Sidebar */}
-      <aside className="h-dvh shrink-0 flex w-64 flex-col border-r border-white/10 p-6 overflow-y-auto">
-        <div className="mb-8">
-          <h1 className="text-xl font-bold">RoboRebut</h1>
-          <p className="mt-1 text-xs text-gray-500 truncate">{userEmail}</p>
-        </div>
+      <aside className="h-dvh shrink-0 overflow-y-auto border-r border-white/10">
+        <div className="flex w-64 flex-col p-6">
+          <div className="mb-8">
+            <h1 className="text-xl font-bold">RoboRebut</h1>
+            <p className="mt-1 text-xs text-gray-500 truncate">{userEmail}</p>
+          </div>
 
-        <nav className="flex-1 space-y-1">
-          <Link
-            href="/dashboard"
-            className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
-          >
-            Conversations
-          </Link>
-          <Link
-            href="/dashboard/saved"
-            className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
-          >
-            Saved Responses
-          </Link>
-          <div className="pt-3">
-            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
-              Intelligence
-            </div>
+          <nav className="flex-1 space-y-1">
             <Link
-              href="/dashboard/intelligence/analytics"
+              href="/dashboard"
               className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
             >
-              Performance
+              Conversations
             </Link>
             <Link
-              href="/dashboard/intelligence/review"
+              href="/dashboard/saved"
               className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
             >
-              Review
+              Saved Responses
             </Link>
-            <Link
-              href="/dashboard/intelligence"
-              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
-            >
-              Insights
-            </Link>
-          </div>
-          {/* Full navigation avoids client transition edge cases when `.next` is mid-compile. */}
-          <a
-            href="/pricing"
-            className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
-          >
-            Pricing
-          </a>
-          <div className="pt-3">
-            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
-              Settings
-            </div>
-            <Link
-              href="/dashboard/settings/integrations"
-              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
-            >
-              Integrations
-            </Link>
-          </div>
-          {isFounderEmail(userEmail) ? (
             <div className="pt-3">
               <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
-                Founder
+                Intelligence
               </div>
               <Link
-                href="/dashboard/analytics"
+                href="/dashboard/intelligence/analytics"
                 className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
               >
-                Analytics
+                Performance
               </Link>
               <Link
-                href="/dashboard/founder/support"
+                href="/dashboard/intelligence/review"
                 className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
               >
-                Support Console
+                Review
               </Link>
               <Link
-                href="/dashboard/founder/analytics/patterns"
+                href="/dashboard/intelligence"
                 className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
               >
-                Pattern Intelligence
+                Insights
               </Link>
             </div>
-          ) : null}
-        </nav>
+            {/* Full navigation avoids client transition edge cases when `.next` is mid-compile. */}
+            <a
+              href="/pricing"
+              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Pricing
+            </a>
+            <div className="pt-3">
+              <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                Settings
+              </div>
+              <Link
+                href="/dashboard/settings/integrations"
+                className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Integrations
+              </Link>
+            </div>
+            {isFounderEmail(userEmail) ? (
+              <div className="pt-3">
+                <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                  Founder
+                </div>
+                <Link
+                  href="/dashboard/analytics"
+                  className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+                >
+                  Analytics
+                </Link>
+                <Link
+                  href="/dashboard/founder/support"
+                  className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+                >
+                  Support Console
+                </Link>
+                <Link
+                  href="/dashboard/founder/analytics/patterns"
+                  className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+                >
+                  Pattern Intelligence
+                </Link>
+              </div>
+            ) : null}
+          </nav>
 
-        <form action="/logout" method="POST" className="mt-auto">
-          <button
-            type="submit"
-            className="w-full rounded-lg border border-white/20 px-3 py-2 text-left text-sm text-gray-400 transition hover:border-white/40 hover:text-white"
-          >
-            Sign out
-          </button>
-        </form>
+          <form action="/logout" method="POST" className="mt-auto">
+            <button
+              type="submit"
+              className="w-full rounded-lg border border-white/20 px-3 py-2 text-left text-sm text-gray-400 transition hover:border-white/40 hover:text-white"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-h-0 h-dvh overflow-hidden">
-        <div className="h-full min-h-0 overflow-y-auto p-8">{children}</div>
+      <main className="flex-1 h-dvh overflow-hidden">
+        <div className="h-full overflow-y-auto p-8">
+          {children}
+        </div>
       </main>
 
       {/* Backend WS — dashboard only, not auth pages */}

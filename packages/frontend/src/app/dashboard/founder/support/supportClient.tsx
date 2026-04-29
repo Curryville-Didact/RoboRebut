@@ -202,7 +202,7 @@ export function FounderSupportClient({
               </StatusPill>
             ) : null}
           </div>
-          <pre className="mt-3 overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+          <pre className="mt-3 overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
             {JSON.stringify(data.supportSummary, null, 2)}
           </pre>
         </Section>
@@ -210,7 +210,7 @@ export function FounderSupportClient({
 
       {data?.identity ? (
         <Section title="Identity">
-          <pre className="overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
             {JSON.stringify(data.identity, null, 2)}
           </pre>
         </Section>
@@ -218,7 +218,7 @@ export function FounderSupportClient({
 
       {data?.billing ? (
         <Section title="Billing Truth">
-          <pre className="overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
             {JSON.stringify(data.billing, null, 2)}
           </pre>
         </Section>
@@ -226,7 +226,7 @@ export function FounderSupportClient({
 
       {data?.entitlements ? (
         <Section title="Entitlements">
-          <pre className="overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
             {JSON.stringify(data.entitlements, null, 2)}
           </pre>
         </Section>
@@ -234,7 +234,7 @@ export function FounderSupportClient({
 
       {data?.usage ? (
         <Section title="Usage">
-          <pre className="overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
             {JSON.stringify(data.usage, null, 2)}
           </pre>
         </Section>
@@ -249,7 +249,7 @@ export function FounderSupportClient({
               </StatusPill>
             ))}
           </div>
-          <pre className="mt-3 overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+          <pre className="mt-3 overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
             {JSON.stringify(data.diagnostics, null, 2)}
           </pre>
         </Section>
@@ -257,7 +257,7 @@ export function FounderSupportClient({
 
       {data ? (
         <Section title="Raw Response">
-          <pre className="overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
             {JSON.stringify(data, null, 2)}
           </pre>
         </Section>

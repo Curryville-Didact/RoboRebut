@@ -1,30 +1,34 @@
-"use client";
+'use client'
 
-import { useEffect } from "react";
+import { useEffect } from 'react'
 
-export function DashboardViewportLock() {
+export default function DashboardViewportLock() {
   useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
+    const html = document.documentElement
+    const body = document.body
 
-    const prevHtmlHeight = html.style.height;
-    const prevHtmlOverflow = html.style.overflow;
-    const prevBodyHeight = body.style.height;
-    const prevBodyOverflow = body.style.overflow;
+    const prevHtmlOverflow = html.style.overflow
+    const prevBodyOverflow = body.style.overflow
 
-    html.style.height = "100%";
-    html.style.overflow = "hidden";
-    body.style.height = "100%";
-    body.style.overflow = "hidden";
+    const prevHtmlHeight = html.style.height
+    const prevBodyHeight = body.style.height
+
+    // HARD LOCK
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+
+    html.style.height = '100dvh'
+    body.style.height = '100dvh'
 
     return () => {
-      html.style.height = prevHtmlHeight;
-      html.style.overflow = prevHtmlOverflow;
-      body.style.height = prevBodyHeight;
-      body.style.overflow = prevBodyOverflow;
-    };
-  }, []);
+      html.style.overflow = prevHtmlOverflow
+      body.style.overflow = prevBodyOverflow
 
-  return null;
+      html.style.height = prevHtmlHeight
+      body.style.height = prevBodyHeight
+    }
+  }, [])
+
+  return null
 }
 

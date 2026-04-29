@@ -64,7 +64,7 @@ function Table({
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
       <h2 className="text-sm font-semibold text-white">{title}</h2>
-      <div className="mt-3 overflow-auto">
+      <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[520px] text-left text-xs text-gray-300">
           <thead className="text-[11px] uppercase tracking-wider text-gray-500">
             <tr>
@@ -265,7 +265,7 @@ export function FounderPatternAnalyticsClient({ apiBase }: { apiBase: string }) 
 
       <section className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
         <h2 className="text-sm font-semibold text-white">Telemetry health</h2>
-        <pre className="mt-3 overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-gray-200">
           {JSON.stringify(data?.health ?? {}, null, 2)}
         </pre>
       </section>
