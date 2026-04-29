@@ -1,5 +1,3 @@
-import { readNextPublicString } from "@/lib/publicEnv";
-
 /**
  * Single source of truth for backend URLs (HTTP + WebSocket).
  * Defaults match local dev: backend on 3001, same host for WS.
@@ -25,27 +23,22 @@ function canonicalizeBackendHttpUrl(url: string): string {
   }
 }
 
-/** e.g. http://127.0.0.1:3001 */
-export const API_URL = canonicalizeBackendHttpUrl(
-  readNextPublicString("NEXT_PUBLIC_API_URL", "http://127.0.0.1:3001")
-);
+const RAW_NEXT_PUBLIC_API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3001";
 
-function httpBaseToWsBase(httpUrl: string): string {
-  if (httpUrl.startsWith("https://")) {
-    return `wss://${httpUrl.slice("https://".length)}`;
-  }
-  if (httpUrl.startsWith("http://")) {
-    return `ws://${httpUrl.slice("http://".length)}`;
-  }
-  return httpUrl;
+/** e.g. http://127.0.0.1:3001 */
+export const API_URL = canonicalizeBackendHttpUrl(RAW_NEXT_PUBLIC_API_URL);
+
+function canonicalizeBackendWsUrl(url: string): string {
+  return trimSlash(url);
 }
 
 /**
- * Full WebSocket URL including path (Fastify serves `/ws`).
+ * Live coach WebSocket (Fastify: `GET /api/ws/coach`).
  * Override with NEXT_PUBLIC_WS_URL if needed.
  */
-const wsOverride = readNextPublicString("NEXT_PUBLIC_WS_URL", "");
-export const WS_URL =
-  wsOverride !== ""
-    ? trimSlash(wsOverride)
-    : `${httpBaseToWsBase(API_URL)}/ws`;
+const RAW_NEXT_PUBLIC_WS_URL = process.env.NEXT_PUBLIC_WS_URL;
+
+export const WS_URL = RAW_NEXT_PUBLIC_WS_URL
+  ? canonicalizeBackendWsUrl(RAW_NEXT_PUBLIC_WS_URL)
+  : `${API_URL.replace(/^http/, "ws")}/api/ws/coach`;
