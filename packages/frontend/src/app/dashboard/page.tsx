@@ -15,7 +15,12 @@ import {
   type PlanMessagingTier,
   type UsageSnapshot,
 } from "@/lib/usageBilling";
-import { MSG_CONVERSATIONS_CREATE, MSG_CONVERSATIONS_LOAD, MSG_SESSION } from "@/lib/userFacingErrors";
+import {
+  isLikelyForbiddenStatus,
+  MSG_CONVERSATIONS_CREATE,
+  MSG_CONVERSATIONS_LOAD,
+  MSG_SESSION,
+} from "@/lib/userFacingErrors";
 import { OnboardingSteps } from "@/components/dashboard/OnboardingSteps";
 import { PostCheckoutPlanActivation } from "@/components/dashboard/PostCheckoutPlanActivation";
 import { UpgradeSuccessNotice } from "@/components/dashboard/UpgradeSuccessNotice";
@@ -180,7 +185,7 @@ async function syncEntitlement(token: string): Promise<void> {
         );
       } else {
         void res.json().catch(() => null);
-        setError(MSG_CONVERSATIONS_LOAD);
+        setError(isLikelyForbiddenStatus(res.status) ? MSG_SESSION : MSG_CONVERSATIONS_LOAD);
       }
     } catch {
       setError(MSG_CONVERSATIONS_LOAD);

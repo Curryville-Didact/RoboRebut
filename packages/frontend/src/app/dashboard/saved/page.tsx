@@ -7,7 +7,7 @@ import { API_URL } from "@/lib/env";
 import { RebutBrandLogo } from "@/components/brand/RebutBrandLogo";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardEmptyState";
 import { SavedResponseCard } from "@/components/dashboard/SavedResponseCard";
-import { MSG_SAVED_LOAD, MSG_SESSION } from "@/lib/userFacingErrors";
+import { isLikelyForbiddenStatus, MSG_SAVED_LOAD, MSG_SESSION } from "@/lib/userFacingErrors";
 import { trackEvent } from "@/lib/trackEvent";
 import { isFounderEmail } from "@/lib/founder";
 import { DEMO_SAVED_RESPONSES } from "@/lib/demoFixtures";
@@ -107,7 +107,9 @@ export default function SavedResponsesPage() {
 
       if (!res.ok) {
         void res.json().catch(() => null);
-        if (mountedRef.current) setError(MSG_SAVED_LOAD);
+        if (mountedRef.current) {
+          setError(isLikelyForbiddenStatus(res.status) ? MSG_SESSION : MSG_SAVED_LOAD);
+        }
         return;
       }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isLikelyForbiddenStatus, MSG_SESSION } from "@/lib/userFacingErrors";
 
 type SnapshotResponse = {
   totalUsers: number | null;
@@ -67,9 +68,17 @@ export function FounderOperationsSnapshot({ apiBase }: { apiBase: string }) {
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         });
-        const json = (await res.json()) as SnapshotResponse;
+        const json = (await res.json().catch(() => null)) as SnapshotResponse | null;
         if (!res.ok) {
-          if (!cancelled) setError("Operations snapshot unavailable.");
+          if (!cancelled) {
+            if (res.status === 404) {
+              setError("Operations snapshot endpoint is not available on the backend.");
+            } else if (isLikelyForbiddenStatus(res.status)) {
+              setError(MSG_SESSION);
+            } else {
+              setError("Operations snapshot unavailable.");
+            }
+          }
           return;
         }
         if (!cancelled) setData(json);
