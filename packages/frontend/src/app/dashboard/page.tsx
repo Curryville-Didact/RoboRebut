@@ -26,6 +26,7 @@ import { PostCheckoutPlanActivation } from "@/components/dashboard/PostCheckoutP
 import { UpgradeSuccessNotice } from "@/components/dashboard/UpgradeSuccessNotice";
 import { isFounderEmail } from "@/lib/founder";
 import { DEMO_CONVERSATIONS } from "@/lib/demoFixtures";
+import { trackEvent } from "@/lib/trackEvent";
 
 interface Conversation {
   id: string;
@@ -93,6 +94,14 @@ export default function DashboardPage() {
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    trackEvent({
+      eventName: "dashboard_view",
+      surface: "dashboard",
+      metadata: { route: "/dashboard", source: "app" },
+    });
   }, []);
 
   useEffect(() => {
@@ -217,6 +226,7 @@ async function syncEntitlement(token: string): Promise<void> {
       setError(null);
     }
 
+    const wasFirstConversationCandidate = conversations.length === 0;
     try {
       const token = await waitForSessionAccessToken();
       if (!token) {
@@ -259,6 +269,14 @@ async function syncEntitlement(token: string): Promise<void> {
         setConversations((prev) =>
           sortByUpdatedAtDesc([created, ...prev])
         );
+        if (wasFirstConversationCandidate) {
+          trackEvent({
+            eventName: "first_conversation_created",
+            surface: "dashboard",
+            conversationId: created.id,
+            metadata: { activationCandidate: true, source: "dashboard" },
+          });
+        }
         router.push(`/dashboard/${created.id}`);
       }
     } catch {

@@ -4,6 +4,14 @@ import { API_URL } from "@/lib/env";
 
 export type TrackEventPayload = {
   eventName:
+    | "signup_page_view"
+    | "login_page_view"
+    | "account_created"
+    | "login_success"
+    | "dashboard_view"
+    | "first_conversation_created"
+    | "first_objection_submitted"
+    | "first_response_generated"
     | "enforcement_prompt_shown"
     | "enforcement_prompt_primary_clicked"
     | "enforcement_prompt_secondary_clicked"

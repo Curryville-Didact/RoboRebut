@@ -346,6 +346,8 @@ export default function ConversationDetailPage() {
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const isFirstScrollRef = useRef(true);
   const shownNudgesRef = useRef<Set<string>>(new Set());
+  const activationFirstObjectionTrackedRef = useRef(false);
+  const activationFirstResponseTrackedRef = useRef(false);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -798,6 +800,16 @@ export default function ConversationDetailPage() {
 
     const sentInConv = conversationId;
     inflightConvRef.current = sentInConv;
+
+    if (!activationFirstObjectionTrackedRef.current) {
+      activationFirstObjectionTrackedRef.current = true;
+      trackEvent({
+        eventName: "first_objection_submitted",
+        surface: "conversation",
+        conversationId: sentInConv,
+        metadata: { activationCandidate: true, source: "conversation" },
+      });
+    }
 
     setComposer("");
     setSending(true);
@@ -1328,6 +1340,16 @@ export default function ConversationDetailPage() {
 
         if (parsed.enrichmentPending) {
           window.setTimeout(() => void refetchThreadMessages(), 2800);
+        }
+
+        if (!activationFirstResponseTrackedRef.current) {
+          activationFirstResponseTrackedRef.current = true;
+          trackEvent({
+            eventName: "first_response_generated",
+            surface: "conversation",
+            conversationId: sentInConv,
+            metadata: { activationCandidate: true, source: "conversation" },
+          });
         }
       } else {
         setError("Unexpected response from server.");

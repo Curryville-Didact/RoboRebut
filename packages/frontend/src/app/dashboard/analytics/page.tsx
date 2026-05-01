@@ -99,6 +99,14 @@ const UPGRADE_NUDGE_EVENTS = [
 ] as const;
 
 const ACTIVATION_EVENTS = [
+  "signup_page_view",
+  "login_page_view",
+  "account_created",
+  "login_success",
+  "dashboard_view",
+  "first_conversation_created",
+  "first_objection_submitted",
+  "first_response_generated",
   "response_generated",
   "priority_generation_used",
   "saved_response_created",
@@ -395,6 +403,55 @@ export default async function AnalyticsPage({
                 </div>
               ))}
             </div>
+          </section>
+
+          <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+            <div>
+              <div className="text-sm font-semibold">Activation funnel</div>
+              <p className="mt-1 text-xs text-gray-500">
+                Explicit funnel events only. Drop-off from previous step. No inference from generic plan tags.
+              </p>
+            </div>
+            {(() => {
+              const rows: Array<{ label: string; key: string; count: number; prev: number | null }> = [
+                { label: "Signup page views", key: "signup_page_view", count: count("signup_page_view"), prev: null },
+                { label: "Accounts created", key: "account_created", count: count("account_created"), prev: count("signup_page_view") },
+                { label: "Login successes", key: "login_success", count: count("login_success"), prev: count("account_created") },
+                { label: "Dashboard views", key: "dashboard_view", count: count("dashboard_view"), prev: count("login_success") },
+                { label: "First conversations", key: "first_conversation_created", count: count("first_conversation_created"), prev: count("dashboard_view") },
+                { label: "First objections submitted", key: "first_objection_submitted", count: count("first_objection_submitted"), prev: count("first_conversation_created") },
+                { label: "First responses generated", key: "first_response_generated", count: count("first_response_generated"), prev: count("first_objection_submitted") },
+              ];
+
+              return (
+                <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                    <thead className="bg-white/[0.03] text-xs uppercase tracking-wide text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2">step</th>
+                        <th className="px-3 py-2">count</th>
+                        <th className="px-3 py-2">conversion</th>
+                        <th className="px-3 py-2">drop-off</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {rows.map((r) => {
+                        const conv = r.prev == null ? null : safeRate(r.count, r.prev);
+                        const drop = r.prev == null ? null : safeRate(Math.max(0, r.prev - r.count), r.prev);
+                        return (
+                          <tr key={r.key} className="align-top">
+                            <td className="px-3 py-2 text-white">{r.label}</td>
+                            <td className="px-3 py-2 text-gray-300">{r.count.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-gray-300">{formatPercent(conv)}</td>
+                            <td className="px-3 py-2 text-gray-300">{formatPercent(drop)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </section>
 
           <section className="space-y-3">

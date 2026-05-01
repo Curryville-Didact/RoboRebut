@@ -1,6 +1,14 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 type TrackableEventName =
+  | "signup_page_view"
+  | "login_page_view"
+  | "account_created"
+  | "login_success"
+  | "dashboard_view"
+  | "first_conversation_created"
+  | "first_objection_submitted"
+  | "first_response_generated"
   | "enforcement_prompt_shown"
   | "enforcement_prompt_primary_clicked"
   | "enforcement_prompt_secondary_clicked"
@@ -44,6 +52,14 @@ export type TrackableEventPayload = {
 };
 
 const ALLOWED_EVENTS = new Set<string>([
+  "signup_page_view",
+  "login_page_view",
+  "account_created",
+  "login_success",
+  "dashboard_view",
+  "first_conversation_created",
+  "first_objection_submitted",
+  "first_response_generated",
   "enforcement_prompt_shown",
   "enforcement_prompt_primary_clicked",
   "enforcement_prompt_secondary_clicked",

@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { trackEvent } from "@/lib/trackEvent";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    trackEvent({
+      eventName: "login_page_view",
+      surface: "auth",
+      metadata: { route: "/login", source: "app" },
+    });
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,6 +31,12 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
+
+    trackEvent({
+      eventName: "login_success",
+      surface: "auth",
+      metadata: { route: "/login", source: "app" },
+    });
 
     // Hard navigation avoids racing RSC fetch with cookie/session propagation after sign-in.
     // router.push + router.refresh() together can abort the /dashboard flight and log

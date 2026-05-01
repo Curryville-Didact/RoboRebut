@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getAuthCallbackURL } from "@/lib/authRedirect";
+import { trackEvent } from "@/lib/trackEvent";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -27,6 +28,14 @@ export default function SignupPage() {
     };
   }, []);
 
+  useEffect(() => {
+    trackEvent({
+      eventName: "signup_page_view",
+      surface: "auth",
+      metadata: { route: "/signup", source: "app" },
+    });
+  }, []);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -46,7 +55,7 @@ export default function SignupPage() {
       // not session detection, token refresh, or URL parsing.
       const supabase = createClient();
 
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: trimmedEmail,
         password: trimmedPassword,
         options: {
@@ -57,6 +66,19 @@ export default function SignupPage() {
       if (signUpError) {
         console.error("Signup error:", signUpError);
         setError(signUpError.message);
+        return;
+      }
+
+      trackEvent({
+        eventName: "account_created",
+        surface: "auth",
+        metadata: { source: "signup", route: "/signup" },
+      });
+
+      // If email confirmation is disabled, Supabase returns a session immediately.
+      // In that case, send the user straight to the working dashboard.
+      if (signUpData?.session) {
+        window.location.assign("/dashboard");
         return;
       }
 
