@@ -217,8 +217,6 @@ export function resolveUserVisiblePrimaryText(input: {
 }): string {
   const fb = input.fallbackText.trim();
   const gen = trimUsable(input.generatedText);
-  const structuredSayThis =
-    input.structuredReply?.rebuttals?.[0]?.sayThis ?? null;
 
   let chosenText: string;
 
@@ -237,15 +235,6 @@ export function resolveUserVisiblePrimaryText(input: {
     } else {
       chosenText = fb;
     }
-  }
-
-  if (process.env.COACH_DEBUG_LLM_OUTPUT?.trim() === "1") {
-    console.log("[PRIMARY_TEXT_RESOLUTION]", {
-      structuredSayThis,
-      rawModelText: input.rawModelText ?? null,
-      replyText: input.generatedText ?? null,
-      chosenText,
-    });
   }
 
   return chosenText;
@@ -2163,6 +2152,7 @@ function serializeErr(err: unknown): Record<string, unknown> {
 /** One-time startup visibility for env-driven live coach. */
 export function logLlmStartupStatus(): void {
   const liveCfg = resolveLiveCoachModelConfig();
+  // startup-only log
   console.log("[LLM_STARTUP_STATUS]", {
     hasOpenAiKey: liveCfg.hasOpenAiKey,
     coachLiveModel: process.env.COACH_LIVE_MODEL ?? null,
@@ -2300,7 +2290,6 @@ function logOpenAiCallErrorFull(model: string, err: unknown): void {
  * to replace the live prompt with this minimal exchange only.
  */
 export async function runOpenAiDirectMinimalProbe(resolvedModel: string): Promise<void> {
-  console.log("[OPENAI_MINIMAL_PROBE_START]", { model: resolvedModel });
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) {
     console.error("[OPENAI_MINIMAL_PROBE_FAIL]", {
@@ -2311,7 +2300,7 @@ export async function runOpenAiDirectMinimalProbe(resolvedModel: string): Promis
   }
   const msgs = normalizeChatMessagesForOpenAi(MINIMAL_PROBE_MESSAGES);
   try {
-    const text = await callChatCompletions(
+    await callChatCompletions(
       "https://api.openai.com",
       `Bearer ${key}`,
       resolvedModel,
@@ -2319,11 +2308,6 @@ export async function runOpenAiDirectMinimalProbe(resolvedModel: string): Promis
       80,
       { logLabel: "minimal_probe", temperature: 0.3 }
     );
-    console.log("[OPENAI_MINIMAL_PROBE_SUCCESS]", {
-      model: resolvedModel,
-      text: text.slice(0, 500),
-      length: text.length,
-    });
   } catch (err) {
     console.error("[OPENAI_MINIMAL_PROBE_FAIL]", {
       model: resolvedModel,
@@ -2358,26 +2342,13 @@ function applyFirstRebuttalSayThisDebugGuardrail(
   return sr;
 }
 
-function logFinalRebuttalObjectDebug(input: {
+function logFinalRebuttalObjectDebug(_input: {
   structuredReply: AssistantStructuredReply;
   replyText: string;
   rawModelText: string | null | undefined;
   livePatternIntel?: LivePatternDebugMeta | null;
 }): void {
-  console.log("[FINAL_REBUTTAL_OBJECT]", {
-    objectionType: input.structuredReply.objectionType ?? null,
-    hasPatternIntel: !!input.structuredReply.patternIntel,
-    rebuttalCount: input.structuredReply?.rebuttals?.length ?? 0,
-    firstRebuttal: input.structuredReply?.rebuttals?.[0] ?? null,
-    firstSayThis: input.structuredReply?.rebuttals?.[0]?.sayThis ?? null,
-    coachInsight: input.structuredReply?.patternIntel?.coachInsight ?? null,
-    primaryPersuasionPattern:
-      input.structuredReply.primaryPersuasionPattern ?? null,
-    lastPatternUsed: input.structuredReply.lastPatternUsed ?? null,
-    livePatternIntel: input.livePatternIntel ?? null,
-    replyText: input.replyText ?? null,
-    rawModelText: input.rawModelText ?? null,
-  });
+  void _input;
 }
 
 const COACH_CHAT_TEMP_PRIMARY = 0.65;
@@ -2418,16 +2389,6 @@ async function callChatCompletions(
     console.info(
       `[coachChatReply] marker_format_retry_llm temp=${options.temperature ?? COACH_CHAT_TEMP_PRIMARY}`
     );
-  }
-  const directOpenAi = isDirectOpenAiEndpoint(endpoint);
-  const firstUserMsg = messages.find((m) => m.role === "user");
-  if (directOpenAi) {
-    console.log("[OPENAI_CALL_START]", {
-      model,
-      messageCount: messages.length,
-      firstUserMessagePreview:
-        firstUserMsg?.content?.slice(0, 150) ?? null,
-    });
   }
   const res = await fetch(`${endpoint}/v1/chat/completions`, {
     method: "POST",
@@ -2476,13 +2437,6 @@ async function callChatCompletions(
     throw err;
   }
 
-  if (directOpenAi) {
-    console.log("[OPENAI_RAW_RESPONSE]", {
-      length: bodyText.length,
-      preview: bodyText.slice(0, 300),
-    });
-  }
-
   let data: {
     choices?: Array<{
       message?: { content?: unknown; refusal?: unknown };
@@ -2496,12 +2450,6 @@ async function callChatCompletions(
   }
 
   const text = extractChoice0AssistantText(data);
-  if (directOpenAi) {
-    console.log("[OPENAI_EXTRACTED_TEXT]", {
-      length: text.length,
-      preview: text.slice(0, 300),
-    });
-  }
   if (!text.trim()) {
     console.error("[OPENAI_EMPTY_RESPONSE_DETECTED]");
     return "";
@@ -2548,15 +2496,6 @@ async function callChatCompletionsStream(
   options?: CoachChatCompletionOptions & { onDelta?: (chunk: string) => void }
 ): Promise<string> {
   const directOpenAi = isDirectOpenAiEndpoint(endpoint);
-  const firstUserMsg = messages.find((m) => m.role === "user");
-  if (directOpenAi) {
-    console.log("[OPENAI_CALL_START]", {
-      model,
-      messageCount: messages.length,
-      firstUserMessagePreview:
-        firstUserMsg?.content?.slice(0, 150) ?? null,
-    });
-  }
   const res = await fetch(`${endpoint}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -2654,14 +2593,6 @@ async function callChatCompletionsStream(
   }
   const text = full.trim();
   if (directOpenAi) {
-    console.log("[OPENAI_RAW_RESPONSE]", {
-      length: full.length,
-      preview: full.slice(0, 300),
-    });
-    console.log("[OPENAI_EXTRACTED_TEXT]", {
-      length: text.length,
-      preview: text.slice(0, 300),
-    });
     if (!text) {
       console.error("[OPENAI_EMPTY_RESPONSE_DETECTED]");
       return "";
@@ -2684,14 +2615,7 @@ async function callCoachChatWithFastMarkerRetry(
   maxTokens: number,
   options?: CoachChatCompletionOptions & { onStreamDelta?: (chunk: string) => void }
 ): Promise<string> {
-  console.log("[FAST_PATH_START]", {
-    model,
-    conversationId: options?.conversationId ?? null,
-    streaming: !!options?.onStreamDelta,
-    maxTokens,
-  });
   const runBuffered = async () => {
-    console.log("[FAST_PATH_REQUEST]", { mode: "buffered", model });
     const raw = await callChatCompletions(
       endpoint,
       authHeader,
@@ -2700,14 +2624,11 @@ async function callCoachChatWithFastMarkerRetry(
       maxTokens,
       { ...options, temperature: COACH_CHAT_TEMP_PRIMARY }
     );
-    console.log("[FAST_PATH_RAW_LENGTH]", raw?.length ?? 0);
-    console.log("[FAST_PATH_RAW_PREVIEW]", raw?.slice(0, 300));
     return raw;
   };
 
   if (options?.onStreamDelta) {
     try {
-      console.log("[FAST_PATH_REQUEST]", { mode: "stream", model });
       const streamed = await callChatCompletionsStream(
         endpoint,
         authHeader,
@@ -2720,9 +2641,6 @@ async function callCoachChatWithFastMarkerRetry(
           temperature: COACH_CHAT_TEMP_PRIMARY,
         }
       );
-      console.log("[FAST_PATH_RAW_LENGTH]", streamed?.length ?? 0);
-      console.log("[FAST_PATH_RAW_PREVIEW]", streamed?.slice(0, 300));
-      console.log("[FAST_PATH_REQUEST_SUCCESS]", { mode: "stream" });
       return streamed;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -2732,7 +2650,6 @@ async function callCoachChatWithFastMarkerRetry(
 
   try {
     const out = await runBuffered();
-    console.log("[FAST_PATH_REQUEST_SUCCESS]", { mode: "buffered" });
     return out;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -2758,18 +2675,6 @@ async function callOpenAiDirectChatCompletionsWithLogs(
     throw new Error("OPENAI_API_KEY missing for direct OpenAI completion");
   }
   const normalized = normalizeChatMessagesForOpenAi(messages);
-  const streamEnabled = !!options?.onStreamDelta;
-  console.log("[OPENAI_REQUEST_SHAPE]", {
-    model,
-    messageCount: normalized.length,
-    roles: normalized.map((m) => m.role),
-    hasSystem: normalized.some((m) => m.role === "system"),
-    firstUserPreview:
-      normalized.find((m) => m.role === "user")?.content?.slice?.(0, 200) ??
-      null,
-    stream: streamEnabled,
-    maxTokens,
-  });
   try {
     const text = await callCoachChatWithFastMarkerRetry(
       "https://api.openai.com",
@@ -2779,11 +2684,6 @@ async function callOpenAiDirectChatCompletionsWithLogs(
       maxTokens,
       options
     );
-    console.log("[OPENAI_CALL_SUCCESS]", {
-      model,
-      hasText: !!text,
-      length: text?.length ?? 0,
-    });
     return {
       rawModelText: text,
       provider: "openai-direct",
@@ -3465,9 +3365,6 @@ export async function generateCoachReply(input: {
    * Parse only after full model output (buffered or completed stream).
    * Streaming must finish before this runs — rawModelText is the full accumulated string.
    */
-  const coachDebugLlm =
-    process.env.COACH_DEBUG_LLM_OUTPUT?.trim() === "1";
-
   const finalizeCoachLlmReply = (
     rawModelText: string
   ): {
@@ -3475,9 +3372,6 @@ export async function generateCoachReply(input: {
     structuredReply: AssistantStructuredReply;
     fallbackUsed: boolean;
   } => {
-    if (coachDebugLlm) {
-      console.log("RAW LLM OUTPUT:", rawModelText);
-    }
     const rawTrim = trimUsable(rawModelText);
     if (!rawTrim) {
       console.warn("[COACH_REPLY_EMPTY_MODEL_OUTPUT] using structured fallback without debug copy");
@@ -3512,13 +3406,6 @@ export async function generateCoachReply(input: {
       };
     }
     const fastResult = parseFastStructuredCoachOutput(rawModelText);
-    if (coachDebugLlm) {
-      console.log("PARSE RESULT:", fastResult);
-      console.log("[FAST_PATH_PARSE_RESULT]", {
-        parsed: fastResult.parsed,
-        hasPrimary: fastResult.parsed ? true : !!trimUsable(fastResult.primary),
-      });
-    }
 
     let structuredReply: AssistantStructuredReply;
     let generatedCandidate: string;
@@ -3584,9 +3471,6 @@ export async function generateCoachReply(input: {
         finalText = safeLine;
       }
       fallbackUsed = true;
-    }
-    if (coachDebugLlm) {
-      console.log("[FAST_PATH_FINAL_TEXT]", finalText.slice(0, 300));
     }
 
     return {
@@ -3829,32 +3713,7 @@ export async function generateCoachReply(input: {
     liveCfg.hasOpenAiKey
   ) {
     messagesForLlm = normalizeChatMessagesForOpenAi(MINIMAL_PROBE_MESSAGES);
-    console.log(
-      "[COACH_OPENAI_MINIMAL_PROBE] using minimal messages instead of live RoboRebut prompt"
-    );
   }
-
-  console.log("[MODEL_CONFIG]", {
-    COACH_LIVE_MODEL: process.env.COACH_LIVE_MODEL ?? null,
-    COACH_PRECALL_INSTANT_MODEL: process.env.COACH_PRECALL_INSTANT_MODEL ?? null,
-    OPENAI_CHAT_MODEL: process.env.OPENAI_CHAT_MODEL ?? null,
-    OPENCLAW_CHAT_MODEL: process.env.OPENCLAW_CHAT_MODEL ?? null,
-    OPENAI_API_KEY_PRESENT: liveCfg.hasOpenAiKey,
-    resolvedModel: liveCfg.hasOpenAiKey ? liveCfg.resolvedModel : null,
-    resolvedModelSource: liveCfg.hasOpenAiKey ? liveCfg.modelSource : null,
-    coachPrimaryCompletionModel,
-    coachPrimaryModelSource,
-    gatewayModel: hasGateway ? resolveGatewayLiveModelString() : null,
-    gatewaySkippedBecauseOpenAiKey: liveCfg.hasOpenAiKey && hasGateway,
-    providerPath: useGatewayFirst
-      ? "gateway_first_openai_direct_fallback"
-      : liveCfg.hasOpenAiKey
-        ? "openai_direct_only"
-        : hasGateway
-          ? "gateway_only_no_openai_key"
-          : "none",
-    reasonNoOpenAi: liveCfg.hasOpenAiKey ? null : liveCfg.reason,
-  });
 
   const baseOpts: CoachChatCompletionOptions & {
     onStreamDelta?: (chunk: string) => void;
@@ -4127,23 +3986,6 @@ Too-similar Lane 2 (replace completely): ${args.lane2}`,
       rawModelText: text,
       livePatternIntel: livePatternIntelDebug,
     });
-    if (
-      textAfterPatterns.trim() === COACH_REPLY_FALLBACK_TEXT ||
-      out.fallbackUsed
-    ) {
-      console.log(
-        "[COACH_REPLY_PAYLOAD]",
-        JSON.stringify(
-          {
-            text: textAfterPatterns,
-            structured_reply: structuredAfterPatterns,
-            fallbackUsed: out.fallbackUsed,
-          },
-          null,
-          2
-        )
-      );
-    }
     const deferredEnrichment: CoachDeferredEnrichment | undefined =
       coachReplyMode === "precall" &&
       preCallDepth !== "instant" &&
@@ -4484,18 +4326,6 @@ Too-similar Lane 2 (replace completely): ${args.lane2}`,
       replyText: textOut,
       rawModelText: null,
     });
-    console.log(
-      "[COACH_REPLY_PAYLOAD]",
-      JSON.stringify(
-        {
-          text: textOut,
-          structured_reply: errStructured,
-          fallbackUsed: true,
-        },
-        null,
-        2
-      )
-    );
     const errApplied = applyCoachReplyModeToSuccessPayload({
       mode: coachReplyMode,
       text: textOut,
@@ -4578,18 +4408,6 @@ Too-similar Lane 2 (replace completely): ${args.lane2}`,
     replyText: textNoModel,
     rawModelText: null,
   });
-  console.log(
-    "[COACH_REPLY_PAYLOAD]",
-    JSON.stringify(
-      {
-        text: textNoModel,
-        structured_reply: noModelStructured,
-        fallbackUsed: true,
-      },
-      null,
-      2
-    )
-  );
   const noModelApplied = applyCoachReplyModeToSuccessPayload({
     mode: coachReplyMode,
     text: textNoModel,
