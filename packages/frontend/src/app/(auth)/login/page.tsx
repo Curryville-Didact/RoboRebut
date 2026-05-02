@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getSafePostAuthRedirect } from "@/lib/authRedirect";
 import { trackEvent } from "@/lib/trackEvent";
 
-export default function LoginPage() {
+function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,25 +27,30 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setError(error.message);
+      if (signInError) {
+        setError(signInError.message);
+        return;
+      }
+
+      trackEvent({
+        eventName: "login_success",
+        surface: "auth",
+        metadata: { route: "/login", source: "app" },
+      });
+
+      const rawNext = searchParams.get("next") ?? searchParams.get("returnTo");
+      router.push(getSafePostAuthRedirect(rawNext));
+      router.refresh();
+    } finally {
       setLoading(false);
-      return;
     }
-
-    trackEvent({
-      eventName: "login_success",
-      surface: "auth",
-      metadata: { route: "/login", source: "app" },
-    });
-
-    // Hard navigation avoids racing RSC fetch with cookie/session propagation after sign-in.
-    // router.push + router.refresh() together can abort the /dashboard flight and log
-    // "Failed to fetch RSC payload … TypeError: Load failed" (then full navigation works).
-    window.location.assign("/dashboard");
   }
 
   return (
@@ -102,5 +111,21 @@ export default function LoginPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-black text-white">
+      <div className="text-sm text-gray-400">Loading…</div>
+    </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }

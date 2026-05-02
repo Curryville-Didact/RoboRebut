@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { getAuthCallbackURL } from "@/lib/authRedirect";
+import { getAuthCallbackURL, getSafePostAuthRedirect } from "@/lib/authRedirect";
 import { trackEvent } from "@/lib/trackEvent";
 
 export default function SignupPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -78,7 +80,8 @@ export default function SignupPage() {
       // If email confirmation is disabled, Supabase returns a session immediately.
       // In that case, send the user straight to the working dashboard.
       if (signUpData?.session) {
-        window.location.assign("/dashboard");
+        router.push(getSafePostAuthRedirect("/dashboard"));
+        router.refresh();
         return;
       }
 

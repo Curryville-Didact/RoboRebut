@@ -37,6 +37,9 @@ export async function middleware(request: NextRequest) {
   if (requiresAuth && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
+    const intended = `${pathname}${request.nextUrl.search}`;
+    url.searchParams.set("next", intended);
     return NextResponse.redirect(url);
   }
 
