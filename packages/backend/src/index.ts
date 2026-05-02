@@ -11,9 +11,13 @@ dotenv.config({ path: envPath, override: true });
 /**
  * RoboRebut Backend — entry point.
  * Fastify server with WebSocket, Prisma, Redis.
- * Auth via Clerk JWT or dev shim.
+ * Auth via Supabase JWT.
  */
 async function main() {
+  // 🚨 Validate all required env vars FIRST — fail fast before any server init
+  const { validateEnv } = await import("./config.js");
+  validateEnv();
+
   const { config } = await import("./config.js");
   const { logLlmStartupStatus } = await import("./services/coachChatReply.js");
   logLlmStartupStatus();
