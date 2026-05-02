@@ -43,6 +43,7 @@ import {
 } from "../services/planEnforcement.js";
 import { parseCoachReplyMode } from "../types/coachReplyMode.js";
 import { resolvePrecallDepthFromBody } from "../types/preCallDepth.js";
+import { prewarmLlmConnection } from "../services/llmPrewarm.js";
 
 const BYPASS_LIMITS = process.env.BYPASS_USAGE_LIMITS === "true";
 
@@ -102,6 +103,8 @@ function isMetaInstruction(message: string): boolean {
 
 export async function coachLiveWsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get("/ws/coach", { websocket: true }, (socket) => {
+    // Pre-warm LLM connection the moment the WebSocket opens — fire and forget
+    prewarmLlmConnection();
     socket.once("message", async (raw: Buffer) => {
       const send = (obj: Record<string, unknown>) => {
         try {
