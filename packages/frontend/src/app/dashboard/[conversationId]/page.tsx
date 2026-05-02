@@ -6,8 +6,6 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { createClient } from "@/lib/supabase/client";
 import { API_URL } from "@/lib/env";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
-import type { DealContext } from "@/lib/dealContext";
-import type { ClientContext } from "@/lib/clientContext";
 import { ClientContextPanel } from "@/components/ClientContextPanel";
 import { DealContextPanel } from "@/components/DealContextPanel";
 import { AssistantCoachMessageBody } from "@/components/AssistantCoachMessageBody";
@@ -61,276 +59,25 @@ import {
   type EnforcementUxModel,
 } from "@/lib/generationEnforcementUx";
 import { EnforcementPromptModal } from "@/components/enforcement/EnforcementPromptModal";
-
-/** Phase 5.3 — matches backend GET/POST usage payload. */
-type UsageSnapshot = {
-  used: number;
-  limit: number;
-  remaining: number;
-  blocked: boolean;
-  entitlements?: {
-    responseVariants?: number;
-    priorityGeneration?: boolean;
-    advancedStrategies?: boolean;
-    advancedToneModes?: boolean;
-    structuredDealContext?: boolean;
-  };
-};
-
-type BillingSyncEntitlementResponse = {
-  ok: boolean;
-  status:
-    | "synced"
-    | "no_change"
-    | "unauthenticated"
-    | "billing_not_configured"
-    | "profile_not_found"
-    | "provider_not_ready"
-    | "error";
-  planType?: string | null;
-  entitlements?: Record<string, unknown>;
-  usage?: UsageSnapshot;
-  message?: string;
-};
-
-interface Conversation {
-  id: string;
-  title: string;
-  deal_context: DealContext | null;
-  /** Account intelligence JSONB; absent on legacy rows. */
-  client_context?: ClientContext | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface MessageRow {
-  id: string;
-  conversation_id: string;
-  user_id: string;
-  role: "user" | "ai";
-  content: string;
-  created_at: string;
-  /** Present when returned from API / DB (optional). */
-  objection_type?: string | null;
-  strategy_used?: string | null;
-  tone_used?: string | null;
-  /** Assistant turns: optional JSON from `messages.structured_reply`. */
-  structured_reply?: Record<string, unknown> | null;
-}
-
-/** Trim, lowercase, collapse spaces to underscores for canonical objection slugs. */
-function normalizeObjectionSlugForHeader(
-  value: string | null | undefined
-): string | null {
-  if (value == null) return null;
-  const t = value.trim();
-  if (t === "") return null;
-  return t.toLowerCase().replace(/\s+/g, "_");
-}
-
-function firstResolvedObjectionSlug(
-  ...candidates: (string | null | undefined)[]
-): string | null {
-  for (const c of candidates) {
-    const n = normalizeObjectionSlugForHeader(c);
-    if (n) return n;
-  }
-  return null;
-}
-
-/**
- * Thread header chips — TYPE display:
- * Prefer the same human artifact label as precall body (`precallObjectionTypeLabel`) when present;
- * else structured_reply.primaryObjectionType → objectionType → messages.objection_type → "unknown".
- */
-function readPrecallObjectionTypeLabelForHeader(
-  parsedStructured: AssistantStructuredReply | null,
-  raw: MessageRow["structured_reply"]
-): string | null {
-  const fromParsed = parsedStructured?.precallObjectionTypeLabel?.trim();
-  if (fromParsed) return fromParsed;
-  if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
-    const v = (raw as Record<string, unknown>).precallObjectionTypeLabel;
-    if (typeof v === "string" && v.trim().length > 0) return v.trim();
-  }
-  return null;
-}
-
-function resolveAssistantHeaderMetadata(
-  m: MessageRow,
-  parsedStructured: AssistantStructuredReply | null
-): {
-  objectionSlug: string | null;
-  /** Same wording as precall “Objection Type” in the card when the artifact supplies it. */
-  objectionDisplayOverride: string | null;
-  toneSlug: string | null;
-} {
-  if (effectiveMessageCoachMode(m.structured_reply, parsedStructured) === "live") {
-    return { objectionSlug: null, objectionDisplayOverride: null, toneSlug: null };
-  }
-  const legTone = m.tone_used?.trim() || null;
-  const raw = m.structured_reply;
-
-  const parsedPrimary =
-    typeof parsedStructured?.primaryObjectionType === "string"
-      ? parsedStructured.primaryObjectionType
-      : null;
-  const parsedObjType =
-    typeof parsedStructured?.objectionType === "string"
-      ? parsedStructured.objectionType
-      : null;
-  const rawPrimary =
-    raw != null && typeof raw.primaryObjectionType === "string"
-      ? raw.primaryObjectionType
-      : null;
-  const rawObjType =
-    raw != null && typeof raw.objectionType === "string"
-      ? raw.objectionType
-      : null;
-  const legObj = m.objection_type?.trim() || null;
-
-  const srObj =
-    firstResolvedObjectionSlug(
-      parsedPrimary,
-      rawPrimary,
-      parsedObjType,
-      rawObjType,
-      legObj
-    ) ?? "unknown";
-
-  const objectionDisplayOverride = readPrecallObjectionTypeLabelForHeader(
-    parsedStructured,
-    raw
-  );
-
-  const srTone =
-    legTone ??
-    (typeof parsedStructured?.toneUsed === "string"
-      ? parsedStructured.toneUsed.trim() || null
-      : null) ??
-    (raw != null && typeof raw.toneUsed === "string"
-      ? raw.toneUsed.trim() || null
-      : null);
-
-  return {
-    objectionSlug: srObj,
-    objectionDisplayOverride,
-    toneSlug: srTone,
-  };
-}
-
-const SESSION_MAX_ATTEMPTS = 5;
-const SESSION_RETRY_DELAY_MS = 200;
-const SESSION_VARIANTS_SEEN_PREFIX = "upgrade_nudge_seen_variants_";
-const USE_WS_LIVE = true;
-
-function getDismissKey(type: "tone" | "variants" | "post_gen"): string {
-  return `upgrade_nudge_dismissed_${type}`;
-}
-
-function readDismissed(type: "tone" | "variants" | "post_gen"): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(getDismissKey(type)) === "true";
-}
-
-function writeDismissed(type: "tone" | "variants" | "post_gen"): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(getDismissKey(type), "true");
-}
-
-function hasSeenVariantNudgeThisSession(conversationId: string): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    window.sessionStorage.getItem(
-      `${SESSION_VARIANTS_SEEN_PREFIX}${conversationId}`
-    ) === "true"
-  );
-}
-
-function markVariantNudgeSeenThisSession(conversationId: string): void {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(
-    `${SESSION_VARIANTS_SEEN_PREFIX}${conversationId}`,
-    "true"
-  );
-}
-
-function derivePlanType(usage: UsageSnapshot | null): "free" | "starter" | "pro" {
-  if (usage?.entitlements?.advancedToneModes) return "pro";
-  if (usage?.limit === -1) return "starter";
-  return "free";
-}
-
-const RR_ENFORCEMENT_HITS_KEY = "rr_enforcement_hits";
-
-/** Increments session enforcement counter; safe default → 1 (low tier) if storage unavailable. */
-function bumpEnforcementHits(): number {
-  try {
-    const raw = sessionStorage.getItem(RR_ENFORCEMENT_HITS_KEY);
-    const prev = Number(raw ?? 0);
-    const base = Number.isFinite(prev) ? prev : 0;
-    const next = base + 1;
-    sessionStorage.setItem(RR_ENFORCEMENT_HITS_KEY, String(next));
-    return next;
-  } catch {
-    return 1;
-  }
-}
-
-function resetEnforcementHits(): void {
-  try {
-    sessionStorage.removeItem(RR_ENFORCEMENT_HITS_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * Single source of truth for DealContextPanel (must match backend Pro gate when payload is complete).
- * Some usage snapshots omit `structuredDealContext` after refresh or message round-trip; Pro is then
- * inferred from `advancedToneModes` only when the flag is absent (not when explicitly false).
- */
-function structuredDealContextEnabledFromUsage(
-  usage: UsageSnapshot | null
-): boolean {
-  const e = usage?.entitlements;
-  if (!e) return false;
-  if (e.structuredDealContext === true) return true;
-  if (e.structuredDealContext === false) return false;
-  return e.advancedToneModes === true;
-}
-
-async function waitForSessionAccessToken(): Promise<string | null> {
-  const supabase = createClient();
-  for (let attempt = 1; attempt <= SESSION_MAX_ATTEMPTS; attempt++) {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token ?? null;
-    if (token) return token;
-    if (attempt < SESSION_MAX_ATTEMPTS) {
-      await new Promise((r) => setTimeout(r, SESSION_RETRY_DELAY_MS));
-    }
-  }
-  return null;
-}
-
-async function syncEntitlement(token: string): Promise<UsageSnapshot | null> {
-  try {
-    const res = await fetch(`${API_URL}/api/billing/sync-entitlement`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const body = (await res.json()) as BillingSyncEntitlementResponse;
-    if (body.status === "unauthenticated") return null;
-    if (body.status === "billing_not_configured") return body.usage ?? null;
-    if (body.status === "provider_not_ready") return body.usage ?? null;
-    if (!res.ok || body.status === "error" || body.status === "profile_not_found") {
-      return body.usage ?? null;
-    }
-    return body.usage ?? null;
-  } catch {
-    return null;
-  }
-}
+import {
+  type Conversation,
+  type MessageRow,
+  type UsageSnapshot,
+  resolveAssistantHeaderMetadata,
+} from "./conversationHelpers";
+import {
+  USE_WS_LIVE,
+  bumpEnforcementHits,
+  derivePlanType,
+  hasSeenVariantNudgeThisSession,
+  markVariantNudgeSeenThisSession,
+  readDismissed,
+  resetEnforcementHits,
+  structuredDealContextEnabledFromUsage,
+  syncEntitlement,
+  waitForSessionAccessToken,
+  writeDismissed,
+} from "./conversationSession";
 
 export default function ConversationDetailPage() {
   const params = useParams();
