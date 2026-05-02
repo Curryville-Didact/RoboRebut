@@ -52,7 +52,6 @@ import { PreCallDepthToggle } from "@/components/PreCallDepthToggle";
 import {
   parseApiErrorPayload,
   resolveGenerationFailureUX,
-  type EnforcementUxModel,
 } from "@/lib/generationEnforcementUx";
 import { EnforcementPromptModal } from "@/components/enforcement/EnforcementPromptModal";
 import {
@@ -64,17 +63,14 @@ import {
 import {
   bumpEnforcementHits,
   derivePlanType,
-  hasSeenVariantNudgeThisSession,
-  markVariantNudgeSeenThisSession,
-  readDismissed,
   resetEnforcementHits,
   structuredDealContextEnabledFromUsage,
   syncEntitlement,
   waitForSessionAccessToken,
-  writeDismissed,
 } from "./conversationSession";
 import { useConversationLoader } from "./useConversationLoader";
 import { useCoachSocket } from "./useCoachSocket";
+import { useEnforcement } from "./useEnforcement";
 
 export default function ConversationDetailPage() {
   const params = useParams();
@@ -89,7 +85,6 @@ export default function ConversationDetailPage() {
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const isFirstScrollRef = useRef(true);
-  const shownNudgesRef = useRef<Set<string>>(new Set());
   const activationFirstObjectionTrackedRef = useRef(false);
   const activationFirstResponseTrackedRef = useRef(false);
 
@@ -125,15 +120,6 @@ export default function ConversationDetailPage() {
   // Delete state
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [showToneUpgradeNudge, setShowToneUpgradeNudge] = useState(false);
-  const [showVariantUpgradeNudge, setShowVariantUpgradeNudge] = useState(false);
-  const [showPostGenUpgradeNudge, setShowPostGenUpgradeNudge] = useState(false);
-  const [enforcementOpen, setEnforcementOpen] = useState(false);
-  const [enforcementUx, setEnforcementUx] = useState<EnforcementUxModel | null>(null);
-  const [enforcementMeta, setEnforcementMeta] = useState<{
-    httpStatus: number;
-    errorCode: string | null;
-  }>({ httpStatus: 0, errorCode: null });
   const returnTo = `${pathname}${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`;
 
   // --- Composer / mic disabled flags ---
@@ -154,38 +140,28 @@ export default function ConversationDetailPage() {
   const planType = derivePlanType(usage);
   const isNearingLimit = monetizationUi?.kind === "nearing_limit";
 
-  const openEnforcementPrompt = useCallback(
-    (
-      model: EnforcementUxModel,
-      meta: { httpStatus: number; errorCode: string | null }
-    ) => {
-      setError(null);
-      setEnforcementUx(model);
-      setEnforcementMeta(meta);
-      setEnforcementOpen(true);
-      trackEvent({
-        eventName: "enforcement_prompt_shown",
-        triggerType: model.analyticsReason,
-        planType,
-        conversationId,
-        surface: "conversation",
-        metadata: {
-          reason: model.analyticsReason,
-          http_status: meta.httpStatus,
-          error_code: meta.errorCode,
-          pressure_level: model.pressureLevel,
-          pressure_tier: model.pressureTier,
-          enforcement_hits: model.enforcementHits,
-        },
-      });
-    },
-    [planType, conversationId]
-  );
-
-  const closeEnforcementPrompt = useCallback(() => {
-    setEnforcementOpen(false);
-    setEnforcementUx(null);
-  }, []);
+  const {
+    showToneUpgradeNudge,
+    showVariantUpgradeNudge,
+    showPostGenUpgradeNudge,
+    enforcementOpen,
+    enforcementUx,
+    enforcementMeta,
+    openEnforcementPrompt,
+    closeEnforcementPrompt,
+    handleLockedToneClick,
+    dismissToneNudge,
+    dismissVariantNudge,
+    dismissPostGenNudge,
+  } = useEnforcement({
+    conversationId,
+    planType,
+    setError,
+    isPro,
+    isNearingLimit,
+    messages,
+    usage,
+  });
 
   const { attemptCoachWsLiveSend } = useCoachSocket({
     coachReplyMode,
@@ -313,94 +289,6 @@ export default function ConversationDetailPage() {
       setSelectedTone("");
     }
   }, [selectedTone, toneOptions]);
-
-  useEffect(() => {
-    if (isPro) {
-      setShowToneUpgradeNudge(false);
-      setShowVariantUpgradeNudge(false);
-      setShowPostGenUpgradeNudge(false);
-      return;
-    }
-    setShowToneUpgradeNudge(false);
-    setShowVariantUpgradeNudge(false);
-    setShowPostGenUpgradeNudge(!readDismissed("post_gen"));
-  }, [isPro, conversationId]);
-
-  useEffect(() => {
-    if (isPro) return;
-    const responseCount = messages.filter((m) => m.role === "ai").length;
-    const hasLimitedVariants =
-      (usage?.entitlements?.responseVariants ?? 1) < 4;
-    if (
-      hasLimitedVariants &&
-      responseCount >= 2 &&
-      !readDismissed("variants") &&
-      !hasSeenVariantNudgeThisSession(conversationId)
-    ) {
-      setShowVariantUpgradeNudge(true);
-      markVariantNudgeSeenThisSession(conversationId);
-    }
-  }, [isPro, messages, usage, conversationId]);
-
-  useEffect(() => {
-    if (isPro) return;
-    const hasAssistantResponse = messages.some((m) => m.role === "ai");
-    if (
-      hasAssistantResponse &&
-      usage?.entitlements?.advancedStrategies === false &&
-      !readDismissed("post_gen")
-    ) {
-      setShowPostGenUpgradeNudge(true);
-    }
-  }, [isPro, messages, usage]);
-
-  useEffect(() => {
-    const nudgeStates = [
-      {
-        key: "tone",
-        visible: showToneUpgradeNudge && !isPro,
-        surface: "ToneSwitcher",
-      },
-      {
-        key: "variants",
-        visible: showVariantUpgradeNudge && !isPro,
-        surface: "ConversationThread",
-      },
-      {
-        key: "near_limit",
-        visible: isNearingLimit && !isPro,
-        surface: "ConversationComposer",
-      },
-      {
-        key: "post_generation",
-        visible: showPostGenUpgradeNudge && !isPro,
-        surface: "ConversationThread",
-      },
-    ] as const;
-
-    for (const nudge of nudgeStates) {
-      if (!nudge.visible || shownNudgesRef.current.has(nudge.key)) continue;
-      shownNudgesRef.current.add(nudge.key);
-      trackEvent({
-        eventName: "upgrade_nudge_shown",
-        triggerType: nudge.key,
-        planType,
-        conversationId,
-        priorityGeneration: usage?.entitlements?.priorityGeneration,
-        responseVariants: usage?.entitlements?.responseVariants ?? null,
-        surface: nudge.surface,
-      });
-    }
-  }, [
-    conversationId,
-    isPro,
-    planType,
-    showPostGenUpgradeNudge,
-    showToneUpgradeNudge,
-    showVariantUpgradeNudge,
-    usage,
-    isNearingLimit,
-  ]);
 
   // --- Send ---
   async function handleSend() {
@@ -656,57 +544,6 @@ export default function ConversationDetailPage() {
         setSending(false);
       }
     }
-  }
-
-  function handleLockedToneClick(tone: string) {
-    if (isPro || readDismissed("tone")) return;
-    trackEvent({
-      eventName: "tone_locked_click",
-      triggerType: "tone",
-      tone,
-      planType,
-      conversationId,
-      priorityGeneration: usage?.entitlements?.priorityGeneration,
-      responseVariants: usage?.entitlements?.responseVariants ?? null,
-      surface: "ToneSwitcher",
-    });
-    setShowToneUpgradeNudge(true);
-  }
-
-  function dismissToneNudge() {
-    trackEvent({
-      eventName: "upgrade_nudge_dismissed",
-      triggerType: "tone",
-      planType,
-      conversationId,
-      surface: "ToneSwitcher",
-    });
-    writeDismissed("tone");
-    setShowToneUpgradeNudge(false);
-  }
-
-  function dismissVariantNudge() {
-    trackEvent({
-      eventName: "upgrade_nudge_dismissed",
-      triggerType: "variants",
-      planType,
-      conversationId,
-      surface: "ConversationThread",
-    });
-    writeDismissed("variants");
-    setShowVariantUpgradeNudge(false);
-  }
-
-  function dismissPostGenNudge() {
-    trackEvent({
-      eventName: "upgrade_nudge_dismissed",
-      triggerType: "post_generation",
-      planType,
-      conversationId,
-      surface: "ConversationThread",
-    });
-    writeDismissed("post_gen");
-    setShowPostGenUpgradeNudge(false);
   }
 
   // --- Rename ---
