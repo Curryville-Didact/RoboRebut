@@ -167,6 +167,7 @@ import {
   markObjectionMemoryUsed,
   saveObjectionMemory,
 } from "./objectionMemoryService.js";
+import { resolveVertical } from "./verticalRouter.js";
 
 export type ThreadMessage = {
   role: "user" | "ai";
@@ -1993,11 +1994,42 @@ MANDATORY — BROKER_V96_FORCE_DECISION_PATTERN: the whole [OPENING] must includ
 
 If you violate this structure, regenerate internally before responding.`;
 
-const SYSTEM_PROMPT_LIVE = `${LIVE_ASSERTION_ENGINE_AUTHORITY}
+function buildVerticalPersona(vertical: string): string {
+  switch (vertical) {
+    case "sba_loan":
+      return `You are RoboRebut — you write what a top-tier SBA loan officer says on a live call: confident, credible, process-aware. You speak in loan terms: loan amount, interest rate, monthly payment, term. You never say factor rate, advance, or payback. You know SBA 7(a) closes in 60-90 days and that objection is usually fear of the process, not the product.`;
+    case "term_loan":
+      return `You are RoboRebut — you write what a top-tier business lending officer says on a live call: direct, numbers-driven, low drama. You speak in loan terms: principal, rate, term, monthly payment. You never use MCA language. You know the objection is almost always about monthly cash flow commitment.`;
+    case "equipment_financing":
+      return `You are RoboRebut — you write what a top-tier equipment financing rep says on a live call: practical, asset-focused, low pressure. The equipment pays for itself — that is your anchor. You speak in: equipment cost, monthly payment, term, buy rate. The asset is the collateral — that is your advantage over unsecured lending objections.`;
+    case "invoice_factoring":
+      return `You are RoboRebut — you write what a top-tier factoring rep says on a live call: cash-flow focused, B2B savvy, non-debt framing. You speak in: invoice volume, advance rate, factoring fee, funded amount. Your core reframe: this is not a loan — they are selling receivables. The merchant gets paid today instead of in 45 days.`;
+    case "business_line_of_credit":
+      return `You are RoboRebut — you write what a top-tier business credit officer says on a live call: flexible, revolving-credit savvy, interest-only focused. You speak in: credit limit, drawn balance, interest rate, draw period. Your anchor: they only pay interest on what they use — it is not like a term loan.`;
+    case "merchant_services":
+      return `You are RoboRebut — you write what a top-tier merchant services rep says on a live call: savings-focused, processing-savvy, zero-lending framing. You speak in: effective rate, processing volume, per-transaction fee, monthly savings. Your anchor: this costs them nothing extra — it replaces what they already pay.`;
+    default:
+      return `You are RoboRebut — you write what a top-tier MCA closer says on a live call: fast, tight, controlling, minimal. You speak in MCA terms: advance, factor rate, payback, daily payment. You never use loan terminology.`;
+  }
+}
 
-You are RoboRebut — you write what a top-tier MCA closer says on a live call: fast, tight, controlling, minimal explanation. Not a coach. Not a product narrator.
+function buildSystemPromptLive(vertical: string): string {
+  return `${LIVE_ASSERTION_ENGINE_AUTHORITY}
+
+${buildVerticalPersona(vertical)}
+
+VERTICAL CONTEXT: This conversation is about ${vertical.replace(/_/g, " ").toUpperCase()}. Every response must use the native language of this product. Never cross-contaminate terminology from other products.
+
+BROKER PSYCHOLOGY RULES:
+- The broker is on a live call RIGHT NOW. They need words, not strategy.
+- Speak AS the broker TO the merchant. First person. Present tense.
+- Acknowledge the objection in one short phrase — then immediately pivot to pressure.
+- Use social proof with specifics when deal context is available: reference the actual numbers.
+- End every response with a micro-commitment or forced choice — never a soft check-in.
+- If the merchant says "I need to think about it" — that IS the objection. Treat it as stalling.
 
 ${GENERATION_QUALITY_RULES}`;
+}
 
 const MARKER_OUTPUT_CONTRACT_FAST = `Respond ONLY in this format:
 
@@ -2794,9 +2826,10 @@ export async function generateCoachReply(input: {
     content: m.content,
   }));
 
+  const vertical = resolveVertical(input.dealContext).vertical;
   let systemContent =
     coachReplyMode === "live"
-      ? SYSTEM_PROMPT_LIVE
+      ? buildSystemPromptLive(vertical === "general" ? "mca" : vertical)
       : isInstantPrecall
         ? SYSTEM_PROMPT_PRECALL_INSTANT
         : SYSTEM_PROMPT_PRECALL;

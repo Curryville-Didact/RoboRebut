@@ -14,6 +14,7 @@ import {
 } from "./canonicalMcaDeal.js";
 import { resolveCanonicalLocFacts } from "./canonicalLocDeal.js";
 import { resolveDealCalculation } from "./resolveDealCalculator.js";
+import { resolveVertical } from "./verticalRouter.js";
 
 export type DealInsightFlags = {
   highBurden?: boolean;
@@ -40,6 +41,9 @@ function partialSummary(missing: string[]): string {
 }
 
 export function buildDealInsight(ctx: DealContext | null): DealInsight {
+  const verticalResolution = resolveVertical(ctx);
+  void verticalResolution;
+
   if (ctx == null) {
     return { hasInsight: false };
   }
