@@ -36,6 +36,10 @@ import {
 import { getPlanEntitlements } from "../services/planEntitlements.js";
 import { parseCoachReplyMode } from "../types/coachReplyMode.js";
 import { resolvePrecallDepthFromBody } from "../types/preCallDepth.js";
+import {
+  getCachedRebuttal,
+  setCachedRebuttal,
+} from "../services/rebuttalCache.js";
 
 const BYPASS_LIMITS = process.env.BYPASS_USAGE_LIMITS === "true";
 
@@ -201,6 +205,43 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
             )
           : undefined;
 
+      // Check Redis cache before hitting the LLM
+      const vertical = (conv.deal_context as any)?.productType ?? "general";
+      const cacheParams = {
+        objection: content,
+        vertical,
+        replyMode: coachReplyMode,
+        planType,
+      };
+      const cachedResult = fastify.redis
+        ? await getCachedRebuttal(fastify.redis, cacheParams)
+        : null;
+
+      if (cachedResult) {
+        request.log.info(
+          { conversationId, userId, vertical, planType },
+          "rebuttal_cache_hit"
+        );
+        return reply.status(201).send({
+          userMessage: userRow as MessageRow,
+          assistantMessage: {
+            id: "cached",
+            conversation_id: conversationId,
+            user_id: userId,
+            role: "ai",
+            content: cachedResult.text,
+            objection_type: request.body?.objection_category ?? null,
+            strategy_used: null,
+            tone_used: null,
+            structured_reply: null,
+            created_at: cachedResult.cachedAt,
+          } as MessageRow,
+          coach_reply_mode: coachReplyMode,
+          updatedTitle: null,
+          cached: true,
+        });
+      }
+
       const coachT0 = Date.now();
       const coachReply = await generateCoachReply({
         supabase,
@@ -296,18 +337,6 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
           },
           "[COACH_REPLY_PAYLOAD]"
         );
-        console.log(
-          "[COACH_REPLY_PAYLOAD]",
-          JSON.stringify(
-            {
-              text: assistantText,
-              structured_reply: structuredReply,
-              fallbackUsed: coachReply.fallbackUsed ?? false,
-            },
-            null,
-            2
-          )
-        );
       }
 
       const pa = coachReply.patternAnalytics;
@@ -330,6 +359,11 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(500).send({
           error: aiInsErr?.message ?? "Failed to save assistant message",
         });
+      }
+
+      // Store successful reply in Redis cache — fire and forget
+      if (fastify.redis && assistantText) {
+        void setCachedRebuttal(fastify.redis, cacheParams, assistantText);
       }
 
       // Phase 4.4 — persist lean pattern intelligence (best-effort; never blocks messaging).
@@ -465,21 +499,6 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
       const assistantCoachMode =
         coachReply.structuredReply?.coachReplyMode ?? coachReplyMode;
       const isLiveAssistant = assistantCoachMode === "live";
-
-      const assistantPayload = aiRow as MessageRow & {
-        structured_reply?: {
-          rebuttals?: { sayThis?: string }[];
-          objectionType?: string | null;
-        } | null;
-      };
-      console.log("[FINAL_API_PAYLOAD]", {
-        content: assistantPayload.content ?? null,
-        structuredReplyExists: !!assistantPayload.structured_reply,
-        firstSayThis:
-          assistantPayload.structured_reply?.rebuttals?.[0]?.sayThis ?? null,
-        objectionType:
-          assistantPayload.structured_reply?.objectionType ?? null,
-      });
 
       return reply.status(201).send({
         userMessage: userRow as MessageRow,
