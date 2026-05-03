@@ -20,15 +20,10 @@ import {
 import { ToneSwitcher } from "@/components/ToneSwitcher";
 import { type AssistantMessageIntel } from "@/lib/patternIntel";
 import { MONETIZATION_LINKS } from "@/lib/monetizationLinks";
-import { getVisibleToneOptions } from "@/lib/toneOptions";
 import { UpgradeNudge } from "@/components/UpgradeNudge";
 import { trackEvent } from "@/lib/trackEvent";
 import { getProCheckoutHref } from "@/lib/checkoutLinks";
 import { getStarterCheckoutHref } from "@/lib/checkoutLinks";
-import {
-  resolveConversationCtaLinks,
-  resolveMonetizationUiState,
-} from "@/lib/monetizationUi";
 import { navigateProBillingSameTab } from "@/lib/resolveProBillingDestination";
 import { formatObjectionTypeLabel } from "@/lib/objectionDisplay";
 import { formatToneLabel } from "@/lib/toneDisplay";
@@ -47,15 +42,12 @@ import {
   type UsageSnapshot,
   resolveAssistantHeaderMetadata,
 } from "./conversationHelpers";
-import {
-  derivePlanType,
-  structuredDealContextEnabledFromUsage,
-  waitForSessionAccessToken,
-} from "./conversationSession";
+import { waitForSessionAccessToken } from "./conversationSession";
 import { useCoachSocket } from "./useCoachSocket";
 import { useEnforcement } from "./useEnforcement";
 import { useMessageSend } from "./useMessageSend";
 import { useConversationActions } from "./useConversationActions";
+import { useConversationDerived } from "./useConversationDerived";
 
 export default function ConversationDetailPage() {
   const params = useParams();
@@ -105,25 +97,28 @@ export default function ConversationDetailPage() {
   // Delete state
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const returnTo = `${pathname}${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`;
 
-  // --- Composer / mic disabled flags ---
-  // Passed into `useConversationActions` so speech recognition stays decoupled from
+  // Composer / mic disabled flags (via useConversationDerived). Passed into
+  // `useConversationActions` so speech recognition stays decoupled from
   // monetization-derived helpers during error recovery renders.
-  const micDisabled = sending || usage?.blocked === true;
-
-  const monetizationUi = resolveMonetizationUiState(usage);
-  const ctaLinks = resolveConversationCtaLinks({ returnTo });
-  const atUsageLimit = monetizationUi?.kind === "limit_reached";
-  const composerDisabled = sending || atUsageLimit;
-  const toneOptions = getVisibleToneOptions(
-    usage?.entitlements?.advancedToneModes === true
-  );
-  const isPro = usage?.entitlements?.advancedToneModes === true;
-  const structuredDealContextEnabled =
-    structuredDealContextEnabledFromUsage(usage ?? null);
-  const planType = derivePlanType(usage);
-  const isNearingLimit = monetizationUi?.kind === "nearing_limit";
+  const {
+    returnTo,
+    micDisabled,
+    monetizationUi,
+    ctaLinks,
+    atUsageLimit,
+    composerDisabled,
+    toneOptions,
+    isPro,
+    structuredDealContextEnabled,
+    planType,
+    isNearingLimit,
+  } = useConversationDerived({
+    pathname,
+    searchParams,
+    sending,
+    usage,
+  });
 
   const {
     showToneUpgradeNudge,
@@ -807,7 +802,7 @@ export default function ConversationDetailPage() {
           )}
         </div>
 
-        {isNearingLimit && monetizationUi != null && (
+        {monetizationUi != null && monetizationUi.kind === "nearing_limit" && (
           <div
             className={`mb-3 rounded-lg border border-emerald-500/20 bg-white/[0.03] px-3 py-2.5 transition-opacity duration-500 ease-out ${
               prelimitBannerVisible ? "opacity-100" : "opacity-0"
