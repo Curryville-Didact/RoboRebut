@@ -46,6 +46,12 @@ export default async function DashboardLayout({
               Calls
             </Link>
             <Link
+              href="/dashboard/team"
+              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Team
+            </Link>
+            <Link
               href="/dashboard/saved"
               className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
             >
