@@ -49,10 +49,6 @@ import {
 import type { PreCallDepth } from "@/types/preCallDepth";
 import { CoachModeToggle } from "@/components/CoachModeToggle";
 import { PreCallDepthToggle } from "@/components/PreCallDepthToggle";
-import {
-  parseApiErrorPayload,
-  resolveGenerationFailureUX,
-} from "@/lib/generationEnforcementUx";
 import { EnforcementPromptModal } from "@/components/enforcement/EnforcementPromptModal";
 import {
   type Conversation,
@@ -61,9 +57,7 @@ import {
   resolveAssistantHeaderMetadata,
 } from "./conversationHelpers";
 import {
-  bumpEnforcementHits,
   derivePlanType,
-  resetEnforcementHits,
   structuredDealContextEnabledFromUsage,
   syncEntitlement,
   waitForSessionAccessToken,
@@ -71,6 +65,7 @@ import {
 import { useConversationLoader } from "./useConversationLoader";
 import { useCoachSocket } from "./useCoachSocket";
 import { useEnforcement } from "./useEnforcement";
+import { useMessageSend } from "./useMessageSend";
 
 export default function ConversationDetailPage() {
   const params = useParams();
@@ -176,6 +171,31 @@ export default function ConversationDetailPage() {
     openEnforcementPrompt,
   });
 
+  const { handleSend } = useMessageSend({
+    composer,
+    setComposer,
+    sending,
+    setSending,
+    atUsageLimit,
+    conversationId,
+    conversation,
+    messages,
+    usage,
+    setUsage,
+    coachReplyMode,
+    preCallDepth,
+    selectedTone,
+    inflightConvRef,
+    activationFirstObjectionTrackedRef,
+    activationFirstResponseTrackedRef,
+    attemptCoachWsLiveSend,
+    openEnforcementPrompt,
+    setError,
+    setMessages,
+    setConversation,
+    setIntelByMessageId,
+  });
+
   const [prelimitBannerVisible, setPrelimitBannerVisible] = useState(false);
   const prelimitWarningFiredRef = useRef(false);
 
@@ -243,23 +263,6 @@ export default function ConversationDetailPage() {
     setPreCallDepth,
   });
 
-  /** Reload thread after background structured_reply enrichment (non-blocking). */
-  const refetchThreadMessages = useCallback(async () => {
-    const token = await waitForSessionAccessToken();
-    if (!token) return;
-    try {
-      const msgsRes = await fetch(
-        `${API_URL}/api/conversations/${conversationId}/messages`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!msgsRes.ok) return;
-      const msgs = (await msgsRes.json()) as MessageRow[];
-      if (Array.isArray(msgs)) setMessages(msgs);
-    } catch {
-      /* ignore */
-    }
-  }, [conversationId]);
-
   // Drop orphaned intel keys when the thread changes; keep storage in sync.
   useEffect(() => {
     if (!conversation) return;
@@ -289,262 +292,6 @@ export default function ConversationDetailPage() {
       setSelectedTone("");
     }
   }, [selectedTone, toneOptions]);
-
-  // --- Send ---
-  async function handleSend() {
-    const text = composer.trim();
-    if (!text || sending || atUsageLimit) return;
-
-    const sentInConv = conversationId;
-    inflightConvRef.current = sentInConv;
-
-    if (!activationFirstObjectionTrackedRef.current) {
-      activationFirstObjectionTrackedRef.current = true;
-      trackEvent({
-        eventName: "first_objection_submitted",
-        surface: "conversation",
-        conversationId: sentInConv,
-        metadata: { activationCandidate: true, source: "conversation" },
-      });
-    }
-
-    setComposer("");
-    setSending(true);
-    setError(null);
-
-    try {
-      const token = await waitForSessionAccessToken();
-      if (!token) {
-        if (inflightConvRef.current === sentInConv) {
-          openEnforcementPrompt(
-            resolveGenerationFailureUX({
-              httpStatus: 401,
-              errorCode: "AUTH_REQUIRED",
-              errorMessage: null,
-              planTier: derivePlanType(usage),
-              surface: "conversation",
-              enforcementHits: bumpEnforcementHits(),
-            }),
-            { httpStatus: 401, errorCode: "AUTH_REQUIRED" }
-          );
-          setComposer(text);
-        }
-        return;
-      }
-
-      if (
-        attemptCoachWsLiveSend({
-          text,
-          sentInConv,
-          token,
-          messages,
-        })
-      ) {
-        return;
-      }
-
-      const res = await fetch(`${API_URL}/api/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          conversation_id: sentInConv,
-          content: text,
-          coach_reply_mode: coachReplyMode,
-          ...(coachReplyMode === "precall"
-            ? { precall_depth: preCallDepth }
-            : {}),
-          ...(selectedTone ? { tone_override: selectedTone } : {}),
-        }),
-      });
-
-      let body: unknown;
-      try { body = await res.json(); } catch { body = null; }
-
-      if (!res.ok) {
-        if (inflightConvRef.current === sentInConv) {
-          const { code, message } = parseApiErrorPayload(body);
-          const ux = resolveGenerationFailureUX({
-            httpStatus: res.status,
-            errorCode: code,
-            errorMessage: message,
-            planTier: derivePlanType(usage),
-            surface: "conversation",
-            enforcementHits: bumpEnforcementHits(),
-          });
-          openEnforcementPrompt(ux, { httpStatus: res.status, errorCode: code });
-          setComposer(text);
-        }
-        return;
-      }
-
-      if (inflightConvRef.current !== sentInConv) return;
-
-      const parsed = body as {
-        userMessage?: MessageRow;
-        assistantMessage?: MessageRow;
-        updatedTitle?: string | null;
-        error?: string;
-        coach_reply_mode?: CoachReplyMode;
-        patternInsights?: AssistantMessageIntel["patternInsights"];
-        explanation?: string;
-        coachInsight?: string;
-        usage?: UsageSnapshot;
-        /** True when alternates/coaching will arrive via async enrichment — refetch to hydrate. */
-        enrichmentPending?: boolean;
-      };
-
-      if (parsed?.usage != null) {
-        setUsage(parsed.usage);
-      }
-
-      if (parsed?.error === "limit_reached") {
-        const tierAtLimit = derivePlanType(parsed.usage ?? usage);
-        if (inflightConvRef.current === sentInConv && tierAtLimit === "free") {
-          openEnforcementPrompt(
-            resolveGenerationFailureUX({
-              httpStatus: 200,
-              errorCode: null,
-              errorMessage: null,
-              planTier: tierAtLimit,
-              limitReachedLegacy: true,
-              surface: "conversation",
-              enforcementHits: bumpEnforcementHits(),
-            }),
-            { httpStatus: 200, errorCode: "limit_reached" }
-          );
-        } else if (inflightConvRef.current === sentInConv && tierAtLimit !== "free") {
-          setError("Could not complete that reply. Check your plan or try again.");
-        }
-        if (parsed.userMessage) {
-          setMessages((prev) => {
-            const existingIds = new Set(prev.map((m) => m.id));
-            return existingIds.has(parsed.userMessage!.id)
-              ? prev
-              : [...prev, parsed.userMessage!];
-          });
-        }
-        return;
-      }
-
-      if (parsed?.userMessage && parsed?.assistantMessage) {
-        resetEnforcementHits();
-        const assistantId = parsed.assistantMessage.id;
-        const hasIntel =
-          parsed.patternInsights != null ||
-          parsed.explanation != null ||
-          parsed.coachInsight != null;
-        const responseIsLive =
-          parsed.coach_reply_mode === "live" ||
-          parseStructuredReplySafe(parsed.assistantMessage.structured_reply)
-            ?.coachReplyMode === "live";
-        if (hasIntel && assistantId && !responseIsLive) {
-          const intel: AssistantMessageIntel = {
-            ...(parsed.patternInsights != null && {
-              patternInsights: parsed.patternInsights,
-            }),
-            ...(parsed.explanation != null && {
-              explanation: parsed.explanation,
-            }),
-            ...(parsed.coachInsight != null && {
-              coachInsight: parsed.coachInsight,
-            }),
-          };
-          persistAssistantIntelEntry(sentInConv, assistantId, intel);
-          setIntelByMessageId((prev) => ({ ...prev, [assistantId]: intel }));
-        }
-
-        setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id));
-          const toAdd = [parsed.userMessage!, parsed.assistantMessage!].filter(
-            (m) => !existingIds.has(m.id)
-          );
-          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
-        });
-
-        // Phase 7 — passive capture (fail-open): record the final Live script shown.
-        const structured = parseStructuredReplySafe(
-          parsed.assistantMessage.structured_reply
-        );
-        const isLive =
-          parsed.coach_reply_mode === "live" || structured?.coachReplyMode === "live";
-        if (isLive) {
-          const rawScript =
-            structured?.rebuttals?.[0]?.sayThis?.trim() ||
-            structured?.callReadyLine?.trim() ||
-            extractPrimaryRebuttalScript(String(parsed.assistantMessage.content ?? "")) ||
-            String(parsed.assistantMessage.content ?? "").trim();
-          const finalLiveScript = rawScript
-            ? polishLiveSpeakableScript(rawScript, {
-                situationLabel: structured?.liveResponseVisibility?.situationLabel ?? null,
-              })
-            : "";
-          void fetch(`${API_URL}/api/rebuttal-events`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              conversation_id: sentInConv,
-              source_mode: "live",
-              source_surface: "dashboard_conversation",
-              merchant_message: text,
-              final_live_script: finalLiveScript || null,
-              objection_family:
-                structured?.primaryObjectionType?.trim() ||
-                structured?.objectionType?.trim() ||
-                null,
-              objection_type: parsed.assistantMessage.objection_type ?? null,
-              strategy_tag: parsed.assistantMessage.strategy_used ?? null,
-              tone_mode: parsed.assistantMessage.tone_used ?? null,
-              selected_variant_text: rawScript || null,
-              situation_label: structured?.liveResponseVisibility?.situationLabel ?? null,
-              conversation_title: conversation?.title ?? null,
-              created_at: parsed.assistantMessage.created_at ?? null,
-            }),
-          }).catch(() => {
-            /* best-effort */
-          });
-        }
-
-        if (parsed.updatedTitle) {
-          setConversation((prev) =>
-            prev ? { ...prev, title: parsed.updatedTitle! } : prev
-          );
-        }
-
-        if (parsed.enrichmentPending) {
-          window.setTimeout(() => void refetchThreadMessages(), 2800);
-        }
-
-        if (!activationFirstResponseTrackedRef.current) {
-          activationFirstResponseTrackedRef.current = true;
-          trackEvent({
-            eventName: "first_response_generated",
-            surface: "conversation",
-            conversationId: sentInConv,
-            metadata: { activationCandidate: true, source: "conversation" },
-          });
-        }
-      } else {
-        setError("Unexpected response from server.");
-        setComposer(text);
-      }
-    } catch (e) {
-      if (inflightConvRef.current === sentInConv) {
-        setError(e instanceof Error ? e.message : "Failed to send message");
-        setComposer(text);
-      }
-    } finally {
-      if (inflightConvRef.current === sentInConv) {
-        inflightConvRef.current = null;
-        setSending(false);
-      }
-    }
-  }
 
   // --- Rename ---
   function startRename() {
