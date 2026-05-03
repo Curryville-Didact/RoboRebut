@@ -5,7 +5,6 @@ import { API_URL } from "@/lib/env";
 import {
   hasDealContextValues,
   isLineOfCreditContext,
-  isMcaContext,
   isMerchantServicesContext,
   type DealContext,
   type DealContextLineOfCredit,
@@ -20,7 +19,48 @@ import { MerchantServicesDealFields } from "@/components/deal-context/MerchantSe
 export type DealCategory =
   | "mca"
   | "business_line_of_credit"
+  | "term_loan"
+  | "sba_loan"
+  | "equipment_leasing"
+  | "invoice_factoring"
   | "merchant_services";
+
+/** Persisted `deal_context.dealType` (backend vertical router uses `equipment_financing`). */
+function categoryToPersistedDealType(cat: DealCategory): string {
+  if (cat === "equipment_leasing") return "equipment_financing";
+  return cat;
+}
+
+function persistedDealTypeToCategory(dt: string): DealCategory | null {
+  if (dt === "equipment_financing") return "equipment_leasing";
+  const allowed: DealCategory[] = [
+    "mca",
+    "business_line_of_credit",
+    "term_loan",
+    "sba_loan",
+    "equipment_leasing",
+    "invoice_factoring",
+    "merchant_services",
+  ];
+  return (allowed as string[]).includes(dt) ? (dt as DealCategory) : null;
+}
+
+function isMcaLikeCategory(cat: DealCategory): boolean {
+  return cat !== "merchant_services" && cat !== "business_line_of_credit";
+}
+
+function isMcaLikeSavedContext(value: unknown): boolean {
+  if (value == null || typeof value !== "object") return false;
+  const t = (value as Record<string, unknown>).dealType;
+  return (
+    t === undefined ||
+    t === "mca" ||
+    t === "term_loan" ||
+    t === "sba_loan" ||
+    t === "invoice_factoring" ||
+    t === "equipment_financing"
+  );
+}
 
 const MCA_FIELD_KEYS = new Set<string>([
   "dealType",
@@ -120,18 +160,26 @@ export function cleanDealContextPayload(
     return out as DealContext;
   }
 
-  const out = pickWhitelisted(src, MCA_FIELD_KEYS);
-  const pf = out.paymentFrequency;
-  if (typeof pf === "string" && !MCA_PAYMENT_FREQ.has(pf)) {
-    delete out.paymentFrequency;
+  /* MCA field shell shared by mca, term_loan, sba_loan, equipment_leasing → financing, invoice_factoring */
+  {
+    const out = pickWhitelisted(src, MCA_FIELD_KEYS);
+    const pf = out.paymentFrequency;
+    if (typeof pf === "string" && !MCA_PAYMENT_FREQ.has(pf)) {
+      delete out.paymentFrequency;
+    }
+    if (!hasPayloadSignals(out)) return null;
+    out.dealType = categoryToPersistedDealType(category);
+    return out as DealContext;
   }
-  if (!hasPayloadSignals(out)) return null;
-  out.dealType = "mca";
-  return out as DealContext;
 }
 
 function inferCategory(ctx: DealContext | null): DealCategory {
   if (!ctx) return "mca";
+  const dt = (ctx as Record<string, unknown>).dealType;
+  if (typeof dt === "string") {
+    const mapped = persistedDealTypeToCategory(dt);
+    if (mapped) return mapped;
+  }
   if (isMerchantServicesContext(ctx)) return "merchant_services";
   if (isLineOfCreditContext(ctx)) return "business_line_of_credit";
   return "mca";
@@ -144,7 +192,7 @@ function defaultContextForCategory(cat: DealCategory): DealContext {
     case "business_line_of_credit":
       return { dealType: "business_line_of_credit" };
     default:
-      return { dealType: "mca" };
+      return { dealType: categoryToPersistedDealType(cat) } as DealContext;
   }
 }
 
@@ -202,13 +250,14 @@ export function DealContextPanel({
     setDealContext(defaultContextForCategory(nextCat));
   };
 
-  const patchMca = (patch: Partial<DealContextMca>) => {
+  const patchMcaLike = (patch: Partial<DealContextMca>) => {
+    const persistedType = categoryToPersistedDealType(category);
     setDealContext((prev) => {
       const base =
-        prev && isMcaContext(prev)
-          ? { ...(prev as DealContextMca), dealType: "mca" as const }
-          : (defaultContextForCategory("mca") as DealContextMca);
-      return { ...base, ...patch, dealType: "mca" } as DealContext;
+        prev && isMcaLikeSavedContext(prev)
+          ? { ...(prev as DealContextMca) }
+          : (defaultContextForCategory(category) as DealContextMca);
+      return { ...base, ...patch, dealType: persistedType } as DealContext;
     });
   };
 
@@ -299,9 +348,10 @@ export function DealContextPanel({
     ? "Edit Deal Structure"
     : "Add Deal Structure";
 
-  const mcaView =
-    category === "mca" && dealContext && isMcaContext(dealContext)
-      ? dealContext
+  const showMcaLikeFields = isMcaLikeCategory(category);
+  const mcaView: DealContextMca | null =
+    showMcaLikeFields && dealContext && isMcaLikeSavedContext(dealContext)
+      ? (dealContext as DealContextMca)
       : null;
   const locView =
     category === "business_line_of_credit" &&
@@ -371,17 +421,19 @@ export function DealContextPanel({
               className="mt-1 w-full rounded-lg border border-white/20 bg-transparent px-2 py-1.5 text-sm text-white outline-none focus:border-white/50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="mca">MCA (Cash Advance)</option>
-              <option value="business_line_of_credit">
-                Business line of credit
-              </option>
+              <option value="business_line_of_credit">Business line of credit</option>
+              <option value="term_loan">Term Loan</option>
+              <option value="sba_loan">SBA Loan</option>
+              <option value="equipment_leasing">Equipment Leasing</option>
+              <option value="invoice_factoring">Invoice Factoring</option>
               <option value="merchant_services">Merchant services</option>
             </select>
           </label>
 
-          {category === "mca" && mcaView && (
+          {showMcaLikeFields && mcaView && (
             <MCADealFields
               ctx={mcaView}
-              patch={patchMca}
+              patch={patchMcaLike}
               disabled={dealContextLocked}
             />
           )}

@@ -6,23 +6,26 @@
  * - Snapshot/summary reads for inspection
  *
  * Security:
- * - Requires normal auth (Bearer token) and allowlist via INTELLIGENCE_ADMIN_ALLOWLIST.
+ * - Requires normal auth (Bearer token) and `profiles.plan_type` of `pro` or `team`.
  * - Endpoints are under /api/admin/intelligence/*
  */
 
 import type { FastifyInstance } from "fastify";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { rebuildOfflineIntelligenceForUser } from "../services/intelligence/offlineIntelligence.js";
 import { buildLatestInsightsForUser } from "../services/intelligence/intelligenceSummary.js";
 import { sendApiError } from "../lib/apiErrors.js";
 
-function isAllowedAdmin(userId: string): boolean {
-  const raw = process.env.INTELLIGENCE_ADMIN_ALLOWLIST ?? "";
-  const allow = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (allow.length === 0) return false;
-  return allow.includes(userId);
+async function isAllowedUser(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("plan_type")
+    .eq("id", userId)
+    .maybeSingle();
+  return data?.plan_type === "pro" || data?.plan_type === "team";
 }
 
 export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise<void> {
@@ -32,7 +35,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const userId = request.user.id;
-      if (!isAllowedAdmin(userId)) {
+      if (!(await isAllowedUser(fastify.supabase, userId))) {
         return sendApiError(reply, {
           status: 403,
           code: "FORBIDDEN",
@@ -57,7 +60,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const userId = request.user.id;
-      if (!isAllowedAdmin(userId)) {
+      if (!(await isAllowedUser(fastify.supabase, userId))) {
         return sendApiError(reply, {
           status: 403,
           code: "FORBIDDEN",
@@ -154,7 +157,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const userId = request.user.id;
-      if (!isAllowedAdmin(userId)) {
+      if (!(await isAllowedUser(fastify.supabase, userId))) {
         return sendApiError(reply, {
           status: 403,
           code: "FORBIDDEN",
@@ -176,7 +179,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const userId = request.user.id;
-      if (!isAllowedAdmin(userId)) {
+      if (!(await isAllowedUser(fastify.supabase, userId))) {
         return sendApiError(reply, {
           status: 403,
           code: "FORBIDDEN",
