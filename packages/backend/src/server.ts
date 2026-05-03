@@ -10,6 +10,7 @@
 
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import type { FastifyInstance } from "fastify";
 import config from "./config.js";
 import prismaPlugin from "./plugins/prisma.js";
@@ -32,6 +33,7 @@ import { integrationsRoutes } from "./routes/integrations.js";
 import { founderSupportRoutes } from "./routes/founderSupport.js";
 import { founderAnalyticsRoutes } from "./routes/founderAnalytics.js";
 import { founderOperationsRoutes } from "./routes/founderOperations.js";
+import { callsRoutes } from "./routes/calls.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
@@ -69,6 +71,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(prismaPlugin);
   await app.register(redisPlugin);
   await app.register(websocketPlugin);
+  await app.register(multipart, { limits: { fileSize: 26_214_400 } });
 
   app.get("/health", async () => ({ ok: true }));
 
@@ -87,6 +90,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(founderSupportRoutes, { prefix: "/api" });
   await app.register(founderAnalyticsRoutes, { prefix: "/api" });
   await app.register(founderOperationsRoutes, { prefix: "/api" });
+  await app.register(callsRoutes, { prefix: "/api" });
 
   app.get(
     "/api/me",
