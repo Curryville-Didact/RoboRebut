@@ -34,6 +34,7 @@ import { founderSupportRoutes } from "./routes/founderSupport.js";
 import { founderAnalyticsRoutes } from "./routes/founderAnalytics.js";
 import { founderOperationsRoutes } from "./routes/founderOperations.js";
 import { callsRoutes } from "./routes/calls.js";
+import { callWebhookRoutes } from "./routes/callWebhook.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
@@ -91,6 +92,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(founderAnalyticsRoutes, { prefix: "/api" });
   await app.register(founderOperationsRoutes, { prefix: "/api" });
   await app.register(callsRoutes, { prefix: "/api" });
+  await app.register(callWebhookRoutes, { prefix: "/api" });
 
   app.get(
     "/api/me",

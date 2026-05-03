@@ -58,6 +58,15 @@ const INPUT =
 const SELECT =
   "rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100";
 
+const CRM_SOURCES = [
+  { key: "gohighlevel", label: "GoHighLevel" },
+  { key: "hubspot", label: "HubSpot" },
+  { key: "salesforce", label: "Salesforce" },
+  { key: "zoho", label: "Zoho CRM" },
+  { key: "velocify", label: "Velocify" },
+  { key: "generic_webhook", label: "Generic / Other" },
+] as const;
+
 export default function IntegrationsSettingsPage() {
   const [items, setItems] = useState<IntegrationEndpoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +93,11 @@ export default function IntegrationsSettingsPage() {
   );
   const [logs, setLogs] = useState<DeliveryLog[] | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [webhookUserId, setWebhookUserId] = useState<string | null>(null);
+
+  const BACKEND_URL =
+    process.env.NEXT_PUBLIC_API_URL ??
+    (typeof window !== "undefined" ? window.location.origin : "");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,7 +125,15 @@ export default function IntegrationsSettingsPage() {
     }
   }, []);
 
-  useEffect(() => void load(), [load]);
+  useEffect(() => {
+    void load();
+    // Get userId for inbound webhook URLs
+    createClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        setWebhookUserId(data.user?.id ?? null);
+      });
+  }, [load]);
 
   const create = useCallback(async () => {
     if (creating) return;
@@ -245,6 +267,43 @@ export default function IntegrationsSettingsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {/* ── Inbound webhook URLs ── */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+        <div className="text-sm font-semibold">Your inbound webhook URLs</div>
+        <p className="text-xs text-gray-500">
+          Paste one of these URLs into your CRM so RoboRebut automatically transcribes every
+          recorded call and opens a coaching session.
+        </p>
+        {!webhookUserId ? (
+          <div className="text-xs text-gray-500">Loading…</div>
+        ) : (
+          <div className="space-y-2">
+            {CRM_SOURCES.map(({ key, label }) => {
+              const url = `${BACKEND_URL}/api/calls/webhook/${key}?userId=${webhookUserId}`;
+              return (
+                <div key={key} className="space-y-1">
+                  <div className="text-xs text-gray-400">{label}</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={url}
+                      className="flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-gray-200 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void navigator.clipboard.writeText(url)}
+                      className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-gray-300 hover:bg-white/[0.08]"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-2xl font-bold tracking-tight text-white">Integrations</h2>
