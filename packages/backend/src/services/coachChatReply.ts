@@ -2043,12 +2043,32 @@ Do not reproduce these rules verbatim in the output. Use them to shape every reb
   }
 }
 
-function buildSystemPromptLive(vertical: string): string {
+function buildBrokerStyleBlock(style: "aggressive" | "consultative" | "balanced"): string {
+  switch (style) {
+    case "aggressive":
+      return `BROKER STYLE: CLOSER MODE
+You are in hard-close mode. Every rebuttal ends with a direct close or a yes/no question. No soft language. No "whenever you're ready." Create urgency. Assume the deal is happening.`;
+    case "consultative":
+      return `BROKER STYLE: ADVISOR MODE
+You are in advisor mode. Lead with empathy and education. Help the merchant understand their options. Never pressure. Build trust so they close themselves. Soft closes only.`;
+    case "balanced":
+    default:
+      return `BROKER STYLE: BALANCED
+Mix confidence with empathy. Push when the merchant is close. Pull back and educate when they're confused or skeptical. Read the room.`;
+  }
+}
+
+function buildSystemPromptLive(
+  vertical: string,
+  brokerStyle: "aggressive" | "consultative" | "balanced" = "balanced"
+): string {
   return `${LIVE_ASSERTION_ENGINE_AUTHORITY}
 
 ${buildVerticalPersona(vertical)}
 
 VERTICAL CONTEXT: This conversation is about ${vertical.replace(/_/g, " ").toUpperCase()}. Every response must use the native language of this product. Never cross-contaminate terminology from other products.
+
+${buildBrokerStyleBlock(brokerStyle)}
 
 BROKER PSYCHOLOGY RULES:
 - The broker is on a live call RIGHT NOW. They need words, not strategy.
@@ -2857,9 +2877,16 @@ export async function generateCoachReply(input: {
   }));
 
   const vertical = resolveVertical(input.dealContext).vertical;
+  const brokerStyle = (
+    (input.dealContext as { broker_style?: string } | null | undefined)
+      ?.broker_style ?? "balanced"
+  ) as "aggressive" | "consultative" | "balanced";
   let systemContent =
     coachReplyMode === "live"
-      ? buildSystemPromptLive(vertical === "general" ? "mca" : vertical)
+      ? buildSystemPromptLive(
+          vertical === "general" ? "mca" : vertical,
+          brokerStyle
+        )
       : isInstantPrecall
         ? SYSTEM_PROMPT_PRECALL_INSTANT
         : SYSTEM_PROMPT_PRECALL;
