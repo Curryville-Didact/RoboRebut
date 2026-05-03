@@ -26,7 +26,7 @@ const lastPrewarmAt = new Map<string, number>();
 function resolveLlmEndpoint(): { endpoint: string; authHeader: string; model: string } | null {
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL?.trim();
-  const gatewayKey = process.env.OPENCLAW_API_KEY?.trim();
+  const gatewayKey = process.env.OPENCLAW_GATEWAY_TOKEN?.trim();
   const gatewayModel = process.env.OPENCLAW_CHAT_MODEL ?? "openclaw/gtm-offer";
 
   // Mirror the same priority order as coachChatReply.ts
