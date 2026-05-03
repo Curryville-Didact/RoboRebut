@@ -40,6 +40,12 @@ export default async function DashboardLayout({
               Conversations
             </Link>
             <Link
+              href="/dashboard/calls"
+              className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Calls
+            </Link>
+            <Link
               href="/dashboard/saved"
               className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
             >
