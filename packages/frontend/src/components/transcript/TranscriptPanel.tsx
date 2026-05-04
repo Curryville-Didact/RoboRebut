@@ -5,6 +5,13 @@ import { useDeepgramTranscript } from "@/hooks/useDeepgramTranscript";
 import { detectObjection, type ObjectionMatch } from "@/lib/detectObjection";
 import { ObjectionChip } from "@/components/transcript/ObjectionChip";
 
+function fmtElapsed(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${mm}:${String(ss).padStart(2, "0")}`;
+}
+
 export function TranscriptPanel({
   conversationId,
   onObjectionDetected,
@@ -21,12 +28,26 @@ export function TranscriptPanel({
     match: ObjectionMatch;
     text: string;
   } | null>(null);
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
 
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [transcript.length]);
+
+  useEffect(() => {
+    if (!isListening) {
+      setSecondsElapsed(0);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setSecondsElapsed((s) => s + 1);
+    }, 1000);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [isListening]);
 
   useEffect(() => {
     const last = transcript.length > 0 ? transcript[transcript.length - 1] : null;
@@ -72,7 +93,17 @@ export function TranscriptPanel({
           onClick={() => void (isListening ? stopListening() : startListening())}
           className="shrink-0 rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-medium text-gray-200 transition hover:bg-white/10"
         >
-          {isListening ? "Stop" : "Start"}
+          {isListening ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-red-300 animate-pulse">
+                <span aria-hidden>🔴</span>
+                <span>{fmtElapsed(secondsElapsed)}</span>
+              </span>
+              <span>Stop</span>
+            </span>
+          ) : (
+            "Start"
+          )}
         </button>
       </div>
 

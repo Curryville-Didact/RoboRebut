@@ -2630,8 +2630,22 @@ async function callChatCompletionsStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let full = "";
-  const MARKER_PATTERN =
-    /\[(OPENING|REBUTTAL|PATTERN_STATUS|WHY_THIS|HOW_IT_FITS|COACH_INSIGHT|COACH_NOTE|FOLLOW_UP)/;
+  let emittedLength = 0;
+
+  const emitSafe = (nextFull: string) => {
+    const lastOpen = nextFull.lastIndexOf("[");
+    const safeLength =
+      lastOpen < 0
+        ? nextFull.length
+        : nextFull.indexOf("]", lastOpen + 1) >= 0
+          ? nextFull.length
+          : lastOpen;
+
+    if (safeLength <= emittedLength) return;
+    const chunk = nextFull.slice(emittedLength, safeLength);
+    emittedLength = safeLength;
+    if (chunk) options?.onDelta?.(chunk);
+  };
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -2648,9 +2662,7 @@ async function callChatCompletionsStream(
         const piece = extractStreamAssistantContent(json);
         if (piece) {
           full += piece;
-          if (!MARKER_PATTERN.test(piece)) {
-            options?.onDelta?.(piece);
-          }
+          emitSafe(full);
         }
       } catch {
         /* ignore partial SSE lines */
@@ -2668,9 +2680,7 @@ async function callChatCompletionsStream(
         const delta = json.choices?.[0]?.delta?.content;
         if (delta) {
           full += delta;
-          if (!MARKER_PATTERN.test(delta)) {
-            options?.onDelta?.(delta);
-          }
+          emitSafe(full);
         }
       } catch {
         /* ignore */
