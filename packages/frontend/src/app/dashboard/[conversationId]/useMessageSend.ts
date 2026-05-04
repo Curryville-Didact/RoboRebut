@@ -56,7 +56,7 @@ export function useMessageSend(args: {
   setIntelByMessageId: Dispatch<
     SetStateAction<Record<string, AssistantMessageIntel>>
   >;
-}): { handleSend: () => Promise<void> } {
+}): { handleSend: (overrideText?: string) => Promise<void> } {
   const {
     composer,
     setComposer,
@@ -98,8 +98,8 @@ export function useMessageSend(args: {
     }
   }, [conversationId, setMessages]);
 
-  const handleSend = useCallback(async () => {
-    const text = composer.trim();
+  const handleSend = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? composer).trim();
     if (!text || sending || atUsageLimit) return;
 
     const sentInConv = conversationId;

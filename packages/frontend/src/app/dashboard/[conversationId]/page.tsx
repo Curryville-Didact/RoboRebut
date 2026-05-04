@@ -78,7 +78,6 @@ export default function ConversationDetailPage() {
   /** Pre-call only; default Instant for speed (per conversation in sessionStorage). */
   const [preCallDepth, setPreCallDepth] = useState<PreCallDepth>("instant");
   const [showTranscript, setShowTranscript] = useState(false);
-  const pendingTranscriptSendRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Phase 5.3 — backend-backed free tier usage; null until loaded. */
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -182,13 +181,6 @@ export default function ConversationDetailPage() {
     setConversation,
     setIntelByMessageId,
   });
-
-  // Transcript chip “Send” should behave like typing into composer + pressing Enter.
-  // `handleSend` is derived from `composer`, so we wait until composer state reflects the injected text.
-  if (pendingTranscriptSendRef.current && composer === pendingTranscriptSendRef.current) {
-    pendingTranscriptSendRef.current = null;
-    void handleSend();
-  }
 
   const {
     micState,
@@ -910,10 +902,10 @@ export default function ConversationDetailPage() {
             <TranscriptPanel
               conversationId={conversationId}
               onObjectionDetected={(text) => {
-                const t = typeof text === "string" ? text.trim() : "";
-                if (!t) return;
-                pendingTranscriptSendRef.current = t;
-                setComposer(t);
+                setComposer(text);
+                setTimeout(() => {
+                  void handleSend(text);
+                }, 100);
               }}
             />
           </div>
