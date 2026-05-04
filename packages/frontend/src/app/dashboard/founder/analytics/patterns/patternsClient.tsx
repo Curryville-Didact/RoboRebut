@@ -108,6 +108,15 @@ export function FounderPatternAnalyticsClient({ apiBase }: { apiBase: string }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Summary | null>(null);
+  const [phrases, setPhrases] = useState<
+    Array<{
+      phrase: string;
+      deal_type: string | null;
+      vertical: string | null;
+      occurrences: number;
+      conversation_count: number;
+    }>
+  >([]);
 
   async function load() {
     setLoading(true);
@@ -269,6 +278,24 @@ export function FounderPatternAnalyticsClient({ apiBase }: { apiBase: string }) 
           {JSON.stringify(data?.health ?? {}, null, 2)}
         </pre>
       </section>
+
+      <Table
+        title="Phrase patterns (call transcripts)"
+        headers={["phrase", "deal_type", "vertical", "occurrences", "conversation_count"]}
+        rows={phrases.map((p, idx) => [
+          <span key={`${p.phrase}-${idx}`} className="max-w-md whitespace-pre-wrap text-gray-200">
+            {p.phrase}
+          </span>,
+          <span key={`dt-${idx}`} className="font-mono text-[11px] text-gray-300">
+            {p.deal_type ?? "—"}
+          </span>,
+          <span key={`v-${idx}`} className="font-mono text-[11px] text-gray-300">
+            {p.vertical ?? "—"}
+          </span>,
+          p.occurrences,
+          p.conversation_count,
+        ])}
+      />
     </div>
   );
 }

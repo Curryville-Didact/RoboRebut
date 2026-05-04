@@ -37,6 +37,7 @@ import { founderOperationsRoutes } from "./routes/founderOperations.js";
 import { callsRoutes } from "./routes/calls.js";
 import { callWebhookRoutes } from "./routes/callWebhook.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
+import { phrasePatternsRoutes } from "./routes/phrasePatternsRoutes.js";
 import { transcriptsRoutes } from "./routes/transcripts.js";
 import { runPhrasePatternAgent } from "./services/phrasePatternAgent.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
@@ -99,6 +100,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(callWebhookRoutes, { prefix: "/api" });
   await app.register(workspaceRoutes, { prefix: "/api" });
   await app.register(transcriptsRoutes, { prefix: "/api" });
+  await app.register(phrasePatternsRoutes, { prefix: "/api" });
 
   app.get(
     "/api/me",
