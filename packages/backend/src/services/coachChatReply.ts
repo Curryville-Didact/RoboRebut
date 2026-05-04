@@ -2558,8 +2558,6 @@ function extractStreamAssistantContent(json: unknown): string {
       const s = normalizeMessageContentToString(c);
       if (s.length > 0) return s;
     }
-    const rc = delta.reasoning_content;
-    if (typeof rc === "string" && rc.length > 0) return rc;
   }
   const msg = ch0.message as Record<string, unknown> | undefined;
   if (msg && typeof msg.content === "string" && msg.content.length > 0) {
