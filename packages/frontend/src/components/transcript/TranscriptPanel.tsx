@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useDeepgramTranscript } from "@/hooks/useDeepgramTranscript";
 
-export function TranscriptPanel() {
+export function TranscriptPanel({ conversationId }: { conversationId: string }) {
   const { transcript, isListening, startListening, stopListening, error } =
-    useDeepgramTranscript();
+    useDeepgramTranscript(conversationId);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 

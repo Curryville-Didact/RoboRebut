@@ -899,7 +899,7 @@ export default function ConversationDetailPage() {
 
         {showTranscript && isPro && (
           <div className="mb-3">
-            <TranscriptPanel />
+            <TranscriptPanel conversationId={conversationId} />
           </div>
         )}
 

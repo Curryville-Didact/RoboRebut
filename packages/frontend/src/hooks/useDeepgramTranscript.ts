@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { API_URL } from "@/lib/env";
+import { createClient } from "@/lib/supabase/client";
 
 export type TranscriptLine = {
   text: string;
@@ -29,7 +31,7 @@ function extractTranscript(msg: DeepgramMessage): { text: string; isFinal: boole
   return { text: trimmed, isFinal: msg.is_final === true };
 }
 
-export function useDeepgramTranscript(): {
+export function useDeepgramTranscript(conversationId: string): {
   transcript: TranscriptLine[];
   isListening: boolean;
   startListening: () => Promise<void>;
@@ -44,6 +46,7 @@ export function useDeepgramTranscript(): {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const startedRef = useRef(false);
+  const sessionIdRef = useRef<string | null>(null);
 
   const wsUrl = useMemo(() => {
     const params = new URLSearchParams({
@@ -58,6 +61,7 @@ export function useDeepgramTranscript(): {
   const stopListening = useCallback(() => {
     startedRef.current = false;
     setIsListening(false);
+    sessionIdRef.current = null;
 
     try {
       mediaRecorderRef.current?.stop();
@@ -93,6 +97,11 @@ export function useDeepgramTranscript(): {
     if (startedRef.current) return;
     startedRef.current = true;
     setError(null);
+    sessionIdRef.current = crypto.randomUUID();
+
+    const supabase = createClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token ?? null;
 
     const key = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY ?? "";
     if (!key.trim()) {
@@ -150,6 +159,24 @@ export function useDeepgramTranscript(): {
         };
 
         if (extracted.isFinal) {
+          // Fire-and-forget persistence of final lines.
+          if (token && sessionIdRef.current) {
+            void fetch(`${API_URL}/api/transcripts/line`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                conversation_id: conversationId,
+                text: line.text,
+                session_id: sessionIdRef.current,
+              }),
+            }).catch(() => {
+              /* ignore */
+            });
+          }
+
           const withoutInterim =
             prev.length > 0 && prev[prev.length - 1]?.isFinal === false
               ? prev.slice(0, -1)
@@ -201,7 +228,7 @@ export function useDeepgramTranscript(): {
     }
 
     setIsListening(true);
-  }, [wsUrl]);
+  }, [wsUrl, conversationId]);
 
   return {
     transcript,
