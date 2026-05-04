@@ -33,9 +33,9 @@ import {
   effectiveMessageCoachMode,
 } from "@/types/coachReplyMode";
 import type { PreCallDepth } from "@/types/preCallDepth";
-import { CoachModeToggle } from "@/components/CoachModeToggle";
 import { PreCallDepthToggle } from "@/components/PreCallDepthToggle";
 import { EnforcementPromptModal } from "@/components/enforcement/EnforcementPromptModal";
+import { TranscriptPanel } from "@/components/transcript/TranscriptPanel";
 import {
   type Conversation,
   type MessageRow,
@@ -77,6 +77,7 @@ export default function ConversationDetailPage() {
   const [coachReplyMode, setCoachReplyMode] = useState<CoachReplyMode>("live");
   /** Pre-call only; default Instant for speed (per conversation in sessionStorage). */
   const [preCallDepth, setPreCallDepth] = useState<PreCallDepth>("instant");
+  const [showTranscript, setShowTranscript] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Phase 5.3 — backend-backed free tier usage; null until loaded. */
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -772,19 +773,72 @@ export default function ConversationDetailPage() {
               })
             }
           />
-          <CoachModeToggle
-            mode={coachReplyMode}
-            disabled={composerDisabled}
-            onChange={(m) => {
-              setCoachReplyMode(m);
-              if (typeof window !== "undefined") {
-                window.sessionStorage.setItem(
-                  `roborebut:coachReplyMode:${conversationId}`,
-                  m
-                );
-              }
-            }}
-          />
+          <div className="flex flex-col gap-1.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Mode
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={composerDisabled}
+                className={[
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                  coachReplyMode === "precall"
+                    ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                    : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                ].join(" ")}
+                onClick={() => {
+                  const m: CoachReplyMode = "precall";
+                  setCoachReplyMode(m);
+                  if (typeof window !== "undefined") {
+                    window.sessionStorage.setItem(
+                      `roborebut:coachReplyMode:${conversationId}`,
+                      m
+                    );
+                  }
+                }}
+              >
+                Pre-Call Breakdown
+              </button>
+              <button
+                type="button"
+                disabled={composerDisabled}
+                className={[
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                  coachReplyMode === "live"
+                    ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                    : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                ].join(" ")}
+                onClick={() => {
+                  const m: CoachReplyMode = "live";
+                  setCoachReplyMode(m);
+                  if (typeof window !== "undefined") {
+                    window.sessionStorage.setItem(
+                      `roborebut:coachReplyMode:${conversationId}`,
+                      m
+                    );
+                  }
+                }}
+              >
+                Live Call
+              </button>
+              {isPro && (
+                <button
+                  type="button"
+                  disabled={composerDisabled}
+                  className={[
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                    showTranscript
+                      ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                      : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                  ].join(" ")}
+                  onClick={() => setShowTranscript((s) => !s)}
+                >
+                  Transcript 🎤
+                </button>
+              )}
+            </div>
+          </div>
           {coachReplyMode === "precall" && (
             <PreCallDepthToggle
               depth={preCallDepth}
@@ -840,6 +894,12 @@ export default function ConversationDetailPage() {
                 Compare plans
               </Link>
             </div>
+          </div>
+        )}
+
+        {showTranscript && isPro && (
+          <div className="mb-3">
+            <TranscriptPanel />
           </div>
         )}
 
