@@ -28,7 +28,7 @@ export function ObjectionChip({ match, onSend, onDismiss }: Props) {
   return (
     <div
       className={[
-        "relative overflow-hidden rounded-xl border border-white/10 bg-black/70 px-3 py-2 shadow-sm",
+        "relative overflow-hidden rounded-xl border border-white/10 border-l-4 border-emerald-500 bg-black/70 px-4 py-3 shadow-sm",
         "transition-all duration-300 ease-out",
         mounted ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
       ].join(" ")}
@@ -51,7 +51,7 @@ export function ObjectionChip({ match, onSend, onDismiss }: Props) {
           <button
             type="button"
             onClick={onSend}
-            className="rounded-md border border-emerald-500/45 bg-emerald-600/20 px-2.5 py-1 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-600/30"
+            className="animate-pulse rounded-md bg-emerald-500 px-6 py-2 text-xs font-bold text-black transition hover:bg-emerald-400"
           >
             Send
           </button>

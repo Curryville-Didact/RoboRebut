@@ -2630,6 +2630,8 @@ async function callChatCompletionsStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let full = "";
+  const MARKER_PATTERN =
+    /\[(OPENING|REBUTTAL|PATTERN_STATUS|WHY_THIS|HOW_IT_FITS|COACH_INSIGHT|COACH_NOTE|FOLLOW_UP)/;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -2646,7 +2648,9 @@ async function callChatCompletionsStream(
         const piece = extractStreamAssistantContent(json);
         if (piece) {
           full += piece;
-          options?.onDelta?.(piece);
+          if (!MARKER_PATTERN.test(piece)) {
+            options?.onDelta?.(piece);
+          }
         }
       } catch {
         /* ignore partial SSE lines */
@@ -2664,7 +2668,9 @@ async function callChatCompletionsStream(
         const delta = json.choices?.[0]?.delta?.content;
         if (delta) {
           full += delta;
-          options?.onDelta?.(delta);
+          if (!MARKER_PATTERN.test(delta)) {
+            options?.onDelta?.(delta);
+          }
         }
       } catch {
         /* ignore */
