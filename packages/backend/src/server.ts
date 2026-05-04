@@ -11,6 +11,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
+import cron from "node-cron";
 import type { FastifyInstance } from "fastify";
 import config from "./config.js";
 import prismaPlugin from "./plugins/prisma.js";
@@ -37,6 +38,7 @@ import { callsRoutes } from "./routes/calls.js";
 import { callWebhookRoutes } from "./routes/callWebhook.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
 import { transcriptsRoutes } from "./routes/transcripts.js";
+import { runPhrasePatternAgent } from "./services/phrasePatternAgent.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
@@ -230,6 +232,16 @@ export async function createServer(): Promise<FastifyInstance> {
       }
     });
   });
+
+  cron.schedule("0 2 * * *", () => {
+    runPhrasePatternAgent(app.supabase).catch((e) =>
+      console.error("[PHRASE_PATTERN_AGENT]", e)
+    );
+  });
+
+  if (process.env.PHRASE_AGENT_RUN_ON_BOOT === "true") {
+    runPhrasePatternAgent(app.supabase).catch((e: unknown) => console.error("[PHRASE_PATTERN_AGENT_BOOT]", e));
+  }
 
   return app;
 }
