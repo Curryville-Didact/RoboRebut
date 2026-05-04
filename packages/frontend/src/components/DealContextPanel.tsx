@@ -12,9 +12,17 @@ import {
   type DealContextMerchantServices,
 } from "@/lib/dealContext";
 import { navigateProBillingSameTab } from "@/lib/resolveProBillingDestination";
+import { EquipmentLeasingDealFields } from "@/components/deal-context/EquipmentLeasingDealFields";
+import type { DealContextEquipmentLeasingUi } from "@/components/deal-context/EquipmentLeasingDealFields";
+import { InvoiceFactoringDealFields } from "@/components/deal-context/InvoiceFactoringDealFields";
+import type { DealContextInvoiceFactoringUi } from "@/components/deal-context/InvoiceFactoringDealFields";
 import { LOCDealFields } from "@/components/deal-context/LOCDealFields";
 import { MCADealFields } from "@/components/deal-context/MCADealFields";
 import { MerchantServicesDealFields } from "@/components/deal-context/MerchantServicesDealFields";
+import { SbaLoanDealFields } from "@/components/deal-context/SbaLoanDealFields";
+import type { DealContextSbaLoanUi } from "@/components/deal-context/SbaLoanDealFields";
+import { TermLoanDealFields } from "@/components/deal-context/TermLoanDealFields";
+import type { DealContextTermLoanUi } from "@/components/deal-context/TermLoanDealFields";
 
 export type DealCategory =
   | "mca"
@@ -45,20 +53,41 @@ function persistedDealTypeToCategory(dt: string): DealCategory | null {
   return (allowed as string[]).includes(dt) ? (dt as DealCategory) : null;
 }
 
-function isMcaLikeCategory(cat: DealCategory): boolean {
-  return cat !== "merchant_services" && cat !== "business_line_of_credit";
-}
-
-function isMcaLikeSavedContext(value: unknown): boolean {
+function isMcaOnlyContext(value: unknown): boolean {
   if (value == null || typeof value !== "object") return false;
   const t = (value as Record<string, unknown>).dealType;
+  return t === "mca" || t === undefined;
+}
+
+function isTermLoanContext(value: unknown): boolean {
   return (
-    t === undefined ||
-    t === "mca" ||
-    t === "term_loan" ||
-    t === "sba_loan" ||
-    t === "invoice_factoring" ||
-    t === "equipment_financing"
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<string, unknown>).dealType === "term_loan"
+  );
+}
+
+function isSbaLoanContext(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<string, unknown>).dealType === "sba_loan"
+  );
+}
+
+function isEquipmentLeasingSavedContext(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<string, unknown>).dealType === "equipment_financing"
+  );
+}
+
+function isInvoiceFactoringContext(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<string, unknown>).dealType === "invoice_factoring"
   );
 }
 
@@ -104,8 +133,45 @@ const MERCHANT_FIELD_KEYS = new Set<string>([
   "earlyTerminationFee",
 ]);
 
+const TERM_LOAN_FIELD_KEYS = new Set<string>([
+  "dealType",
+  "loanAmount",
+  "interestRate",
+  "termMonths",
+  "monthlyPayment",
+  "paymentFrequency",
+]);
+
+const SBA_LOAN_FIELD_KEYS = new Set<string>([
+  "dealType",
+  "loanAmount",
+  "interestRate",
+  "termMonths",
+  "monthlyPayment",
+  "guaranteeFeePct",
+]);
+
+const EQUIPMENT_LEASING_FIELD_KEYS = new Set<string>([
+  "dealType",
+  "equipmentCost",
+  "downPayment",
+  "monthlyPayment",
+  "termMonths",
+  "residualValue",
+]);
+
+const INVOICE_FACTORING_FIELD_KEYS = new Set<string>([
+  "dealType",
+  "invoiceAmount",
+  "advanceRatePct",
+  "factorFeePct",
+  "reserveAmount",
+  "paymentTermsDays",
+]);
+
 const MCA_PAYMENT_FREQ = new Set<string>(["daily", "weekly"]);
 const LOC_PAYMENT_FREQ = new Set<string>(["daily", "weekly", "monthly"]);
+const TERM_LOAN_PAYMENT_FREQ = new Set<string>(["daily", "weekly", "monthly"]);
 
 function pickWhitelisted(
   src: Record<string, unknown>,
@@ -160,17 +226,50 @@ export function cleanDealContextPayload(
     return out as DealContext;
   }
 
-  /* MCA field shell shared by mca, term_loan, sba_loan, equipment_leasing → financing, invoice_factoring */
-  {
+  if (category === "mca") {
     const out = pickWhitelisted(src, MCA_FIELD_KEYS);
     const pf = out.paymentFrequency;
     if (typeof pf === "string" && !MCA_PAYMENT_FREQ.has(pf)) {
       delete out.paymentFrequency;
     }
     if (!hasPayloadSignals(out)) return null;
-    out.dealType = categoryToPersistedDealType(category);
+    out.dealType = "mca";
     return out as DealContext;
   }
+
+  if (category === "term_loan") {
+    const out = pickWhitelisted(src, TERM_LOAN_FIELD_KEYS);
+    const pf = out.paymentFrequency;
+    if (typeof pf === "string" && !TERM_LOAN_PAYMENT_FREQ.has(pf)) {
+      delete out.paymentFrequency;
+    }
+    if (!hasPayloadSignals(out)) return null;
+    out.dealType = "term_loan";
+    return out as DealContext;
+  }
+
+  if (category === "sba_loan") {
+    const out = pickWhitelisted(src, SBA_LOAN_FIELD_KEYS);
+    if (!hasPayloadSignals(out)) return null;
+    out.dealType = "sba_loan";
+    return out as DealContext;
+  }
+
+  if (category === "equipment_leasing") {
+    const out = pickWhitelisted(src, EQUIPMENT_LEASING_FIELD_KEYS);
+    if (!hasPayloadSignals(out)) return null;
+    out.dealType = "equipment_financing";
+    return out as DealContext;
+  }
+
+  if (category === "invoice_factoring") {
+    const out = pickWhitelisted(src, INVOICE_FACTORING_FIELD_KEYS);
+    if (!hasPayloadSignals(out)) return null;
+    out.dealType = "invoice_factoring";
+    return out as DealContext;
+  }
+
+  return null;
 }
 
 function inferCategory(ctx: DealContext | null): DealCategory {
@@ -250,14 +349,61 @@ export function DealContextPanel({
     setDealContext(defaultContextForCategory(nextCat));
   };
 
-  const patchMcaLike = (patch: Partial<DealContextMca>) => {
-    const persistedType = categoryToPersistedDealType(category);
+  const patchMca = (patch: Partial<DealContextMca>) => {
     setDealContext((prev) => {
       const base =
-        prev && isMcaLikeSavedContext(prev)
-          ? { ...(prev as DealContextMca) }
-          : (defaultContextForCategory(category) as DealContextMca);
-      return { ...base, ...patch, dealType: persistedType } as DealContext;
+        prev && isMcaOnlyContext(prev)
+          ? { ...(prev as unknown as DealContextMca) }
+          : (defaultContextForCategory("mca") as unknown as DealContextMca);
+      return { ...base, ...patch, dealType: "mca" } as unknown as DealContext;
+    });
+  };
+
+  const patchTermLoan = (patch: Partial<DealContextTermLoanUi>) => {
+    setDealContext((prev) => {
+      const base =
+        prev && isTermLoanContext(prev)
+          ? { ...(prev as unknown as DealContextTermLoanUi) }
+          : (defaultContextForCategory("term_loan") as unknown as DealContextTermLoanUi);
+      return { ...base, ...patch, dealType: "term_loan" } as unknown as DealContext;
+    });
+  };
+
+  const patchSbaLoan = (patch: Partial<DealContextSbaLoanUi>) => {
+    setDealContext((prev) => {
+      const base =
+        prev && isSbaLoanContext(prev)
+          ? { ...(prev as unknown as DealContextSbaLoanUi) }
+          : (defaultContextForCategory("sba_loan") as unknown as DealContextSbaLoanUi);
+      return { ...base, ...patch, dealType: "sba_loan" } as unknown as DealContext;
+    });
+  };
+
+  const patchEquipmentLeasing = (patch: Partial<DealContextEquipmentLeasingUi>) => {
+    setDealContext((prev) => {
+      const base =
+        prev && isEquipmentLeasingSavedContext(prev)
+          ? { ...(prev as unknown as DealContextEquipmentLeasingUi) }
+          : (defaultContextForCategory(
+              "equipment_leasing"
+            ) as unknown as DealContextEquipmentLeasingUi);
+      return {
+        ...base,
+        ...patch,
+        dealType: "equipment_financing",
+      } as unknown as DealContext;
+    });
+  };
+
+  const patchInvoiceFactoring = (patch: Partial<DealContextInvoiceFactoringUi>) => {
+    setDealContext((prev) => {
+      const base =
+        prev && isInvoiceFactoringContext(prev)
+          ? { ...(prev as unknown as DealContextInvoiceFactoringUi) }
+          : (defaultContextForCategory(
+              "invoice_factoring"
+            ) as unknown as DealContextInvoiceFactoringUi);
+      return { ...base, ...patch, dealType: "invoice_factoring" } as unknown as DealContext;
     });
   };
 
@@ -348,10 +494,29 @@ export function DealContextPanel({
     ? "Edit Deal Structure"
     : "Add Deal Structure";
 
-  const showMcaLikeFields = isMcaLikeCategory(category);
   const mcaView: DealContextMca | null =
-    showMcaLikeFields && dealContext && isMcaLikeSavedContext(dealContext)
-      ? (dealContext as DealContextMca)
+    category === "mca" && dealContext && isMcaOnlyContext(dealContext)
+      ? (dealContext as unknown as DealContextMca)
+      : null;
+  const termLoanView: DealContextTermLoanUi | null =
+    category === "term_loan" && dealContext && isTermLoanContext(dealContext)
+      ? (dealContext as unknown as DealContextTermLoanUi)
+      : null;
+  const sbaLoanView: DealContextSbaLoanUi | null =
+    category === "sba_loan" && dealContext && isSbaLoanContext(dealContext)
+      ? (dealContext as unknown as DealContextSbaLoanUi)
+      : null;
+  const equipmentLeasingView: DealContextEquipmentLeasingUi | null =
+    category === "equipment_leasing" &&
+    dealContext &&
+    isEquipmentLeasingSavedContext(dealContext)
+      ? (dealContext as unknown as DealContextEquipmentLeasingUi)
+      : null;
+  const invoiceFactoringView: DealContextInvoiceFactoringUi | null =
+    category === "invoice_factoring" &&
+    dealContext &&
+    isInvoiceFactoringContext(dealContext)
+      ? (dealContext as unknown as DealContextInvoiceFactoringUi)
       : null;
   const locView =
     category === "business_line_of_credit" &&
@@ -430,10 +595,42 @@ export function DealContextPanel({
             </select>
           </label>
 
-          {showMcaLikeFields && mcaView && (
+          {category === "mca" && mcaView && (
             <MCADealFields
               ctx={mcaView}
-              patch={patchMcaLike}
+              patch={patchMca}
+              disabled={dealContextLocked}
+            />
+          )}
+
+          {category === "term_loan" && termLoanView && (
+            <TermLoanDealFields
+              ctx={termLoanView}
+              patch={patchTermLoan}
+              disabled={dealContextLocked}
+            />
+          )}
+
+          {category === "sba_loan" && sbaLoanView && (
+            <SbaLoanDealFields
+              ctx={sbaLoanView}
+              patch={patchSbaLoan}
+              disabled={dealContextLocked}
+            />
+          )}
+
+          {category === "equipment_leasing" && equipmentLeasingView && (
+            <EquipmentLeasingDealFields
+              ctx={equipmentLeasingView}
+              patch={patchEquipmentLeasing}
+              disabled={dealContextLocked}
+            />
+          )}
+
+          {category === "invoice_factoring" && invoiceFactoringView && (
+            <InvoiceFactoringDealFields
+              ctx={invoiceFactoringView}
+              patch={patchInvoiceFactoring}
               disabled={dealContextLocked}
             />
           )}
