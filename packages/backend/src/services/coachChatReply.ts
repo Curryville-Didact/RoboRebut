@@ -2632,17 +2632,23 @@ async function callChatCompletionsStream(
   let full = "";
   let emittedLength = 0;
 
+  const MARKER_RE = /\[[A-Z_]{2,}\]/g;
+
   const emitSafe = (nextFull: string) => {
-    const lastOpen = nextFull.lastIndexOf("[");
+    // Strip all complete markers from the accumulated text
+    const cleaned = nextFull.replace(MARKER_RE, "");
+
+    // Find the last [ in cleaned that has no matching ] after it
+    const lastOpen = cleaned.lastIndexOf("[");
     const safeLength =
       lastOpen < 0
-        ? nextFull.length
-        : nextFull.indexOf("]", lastOpen + 1) >= 0
-          ? nextFull.length
+        ? cleaned.length
+        : cleaned.indexOf("]", lastOpen) >= 0
+          ? cleaned.length
           : lastOpen;
 
     if (safeLength <= emittedLength) return;
-    const chunk = nextFull.slice(emittedLength, safeLength);
+    const chunk = cleaned.slice(emittedLength, safeLength);
     emittedLength = safeLength;
     if (chunk) options?.onDelta?.(chunk);
   };
