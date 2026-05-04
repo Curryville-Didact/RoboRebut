@@ -154,7 +154,7 @@ export default function ConversationDetailPage() {
   }, [conversationId]);
 
   useEffect(() => {
-    if (!conversation) return;
+    if (!conversationId) return;
     let cancelled = false;
     setTranscriptProbe("loading");
     void loadTranscript().then((r) => {
@@ -170,7 +170,7 @@ export default function ConversationDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [conversation, loadTranscript]);
+  }, [conversationId, loadTranscript]);
 
   const openTranscriptReplay = useCallback(async () => {
     setTranscriptModalError(null);
