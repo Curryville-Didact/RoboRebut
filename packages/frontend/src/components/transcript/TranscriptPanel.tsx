@@ -1,19 +1,44 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeepgramTranscript } from "@/hooks/useDeepgramTranscript";
+import { detectObjection, type ObjectionMatch } from "@/lib/detectObjection";
+import { ObjectionChip } from "@/components/transcript/ObjectionChip";
 
-export function TranscriptPanel({ conversationId }: { conversationId: string }) {
+export function TranscriptPanel({
+  conversationId,
+  onObjectionDetected,
+}: {
+  conversationId: string;
+  onObjectionDetected: (text: string) => void;
+}) {
   const { transcript, isListening, startListening, stopListening, error } =
     useDeepgramTranscript(conversationId);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const lastProcessedFinalKeyRef = useRef<string | null>(null);
+  const [currentObjection, setCurrentObjection] = useState<{
+    match: ObjectionMatch;
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [transcript.length]);
+
+  useEffect(() => {
+    const last = transcript.length > 0 ? transcript[transcript.length - 1] : null;
+    if (!last || !last.isFinal) return;
+    const key = `${last.timestamp.toISOString()}|${last.text}`;
+    if (lastProcessedFinalKeyRef.current === key) return;
+    lastProcessedFinalKeyRef.current = key;
+
+    const match = detectObjection(last.text);
+    if (!match) return;
+    setCurrentObjection({ match, text: last.text });
+  }, [transcript]);
 
   const hasLines = transcript.length > 0;
   const statusLabel = useMemo(() => {
@@ -61,6 +86,16 @@ export function TranscriptPanel({ conversationId }: { conversationId: string }) 
           </div>
         ) : (
           <div className="space-y-2">
+            {currentObjection ? (
+              <ObjectionChip
+                match={currentObjection.match}
+                onSend={() => {
+                  onObjectionDetected(currentObjection.text);
+                  setCurrentObjection(null);
+                }}
+                onDismiss={() => setCurrentObjection(null)}
+              />
+            ) : null}
             {transcript.map((line, idx) => (
               <div
                 key={`${line.timestamp.toISOString()}_${idx}`}
