@@ -4,7 +4,6 @@
 
 import Link from "next/link";
 import { API_URL } from "@/lib/env";
-import { safeFetchJSON } from "@/lib/safeFetch";
 import { createClient } from "@/lib/supabase/server";
 import { isFounderEmail } from "@/lib/founder";
 import { DashboardEmptyState, DashboardErrorPanel } from "@/components/dashboard/DashboardEmptyState";
@@ -133,7 +132,10 @@ const FOUNDER_FILTER_EVENT_NAMES = dedupeEventNamesPreserveOrder([
   ...ACTIVATION_EVENTS,
 ]);
 
-async function loadAnalyticsData(suffix: string): Promise<{
+async function loadAnalyticsData(
+  suffix: string,
+  token?: string
+): Promise<{
   summary: AnalyticsSummary;
   events: AnalyticsEvent[];
   loadError: string | null;
@@ -147,12 +149,33 @@ async function loadAnalyticsData(suffix: string): Promise<{
   };
 
   const eventsUrl = `${API_URL}/api/analytics/events${suffix}${suffix ? "&" : "?"}limit=100`;
+
+  const fetchOne = async <T,>(
+    url: string,
+    fallback: T
+  ): Promise<{ data: T; error: string | null }> => {
+    try {
+      const res = await fetch(url, {
+        cache: "no-store",
+        ...(token
+          ? { headers: { Authorization: `Bearer ${token}` } }
+          : {}),
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const data = (await res.json()) as T;
+      return { data, error: null };
+    } catch (err) {
+      return {
+        data: fallback,
+        error:
+          err instanceof Error ? err.message : "Data temporarily unavailable",
+      };
+    }
+  };
+
   const [summaryResult, eventsResult] = await Promise.all([
-    safeFetchJSON<AnalyticsSummary>(
-      `${API_URL}/api/analytics/summary${suffix}`,
-      emptySummary
-    ),
-    safeFetchJSON<AnalyticsEvent[]>(eventsUrl, []),
+    fetchOne(`${API_URL}/api/analytics/summary${suffix}`, emptySummary),
+    fetchOne(eventsUrl, []),
   ]);
 
   return {
@@ -234,10 +257,19 @@ export default async function AnalyticsPage({
     );
   }
 
+  const supabase = await createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const analyticsAccessToken = session?.access_token;
+
   const params = (await searchParams) ?? {};
   const query = buildQuery(params);
   const suffix = query ? `?${query}` : "";
-  const { summary, events, loadError } = await loadAnalyticsData(suffix);
+  const { summary, events, loadError } = await loadAnalyticsData(
+    suffix,
+    analyticsAccessToken
+  );
   const totalSignals =
     Object.values(summary.countsByEventName ?? {}).reduce((a, b) => a + (b ?? 0), 0) ?? 0;
   const hasAnyEvents = (events?.length ?? 0) > 0 || totalSignals > 0;
