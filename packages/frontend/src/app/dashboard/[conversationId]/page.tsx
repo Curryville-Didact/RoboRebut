@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -35,7 +35,12 @@ import {
 import type { PreCallDepth } from "@/types/preCallDepth";
 import { PreCallDepthToggle } from "@/components/PreCallDepthToggle";
 import { EnforcementPromptModal } from "@/components/enforcement/EnforcementPromptModal";
+import {
+  TranscriptReplayModal,
+  type TranscriptReplayLine,
+} from "@/components/transcript/TranscriptReplayModal";
 import { TranscriptPanel } from "@/components/transcript/TranscriptPanel";
+import { API_URL } from "@/lib/env";
 import {
   type Conversation,
   type MessageRow,
@@ -48,6 +53,30 @@ import { useEnforcement } from "./useEnforcement";
 import { useMessageSend } from "./useMessageSend";
 import { useConversationActions } from "./useConversationActions";
 import { useConversationDerived } from "./useConversationDerived";
+
+function parseTranscriptReplayLines(body: unknown): TranscriptReplayLine[] {
+  if (!body || typeof body !== "object") return [];
+  const raw = (body as { lines?: unknown }).lines;
+  if (!Array.isArray(raw)) return [];
+  const out: TranscriptReplayLine[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const text = typeof o.text === "string" ? o.text : "";
+    const timestamp =
+      typeof o.timestamp === "string"
+        ? o.timestamp
+        : o.timestamp != null
+          ? String(o.timestamp)
+          : "";
+    const session_id =
+      typeof o.session_id === "string" && o.session_id.length > 0
+        ? o.session_id
+        : null;
+    out.push({ text, timestamp, session_id });
+  }
+  return out;
+}
 
 export default function ConversationDetailPage() {
   const params = useParams();
@@ -78,6 +107,13 @@ export default function ConversationDetailPage() {
   /** Pre-call only; default Instant for speed (per conversation in sessionStorage). */
   const [preCallDepth, setPreCallDepth] = useState<PreCallDepth>("instant");
   const [showTranscript, setShowTranscript] = useState(false);
+  const [transcriptLines, setTranscriptLines] = useState<TranscriptReplayLine[]>([]);
+  const [transcriptProbe, setTranscriptProbe] = useState<"loading" | "ready" | "error">(
+    "loading"
+  );
+  const [transcriptReplayOpen, setTranscriptReplayOpen] = useState(false);
+  const [transcriptModalLoading, setTranscriptModalLoading] = useState(false);
+  const [transcriptModalError, setTranscriptModalError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Phase 5.3 — backend-backed free tier usage; null until loaded. */
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -98,6 +134,56 @@ export default function ConversationDetailPage() {
   // Delete state
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const loadTranscript = useCallback(async (): Promise<{
+    ok: boolean;
+    lines: TranscriptReplayLine[];
+  }> => {
+    try {
+      const token = await waitForSessionAccessToken();
+      if (!token) return { ok: false, lines: [] };
+      const res = await fetch(`${API_URL}/api/transcripts/${conversationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { ok: false, lines: [] };
+      const json = (await res.json()) as unknown;
+      return { ok: true, lines: parseTranscriptReplayLines(json) };
+    } catch {
+      return { ok: false, lines: [] };
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversation) return;
+    let cancelled = false;
+    setTranscriptProbe("loading");
+    void loadTranscript().then((r) => {
+      if (cancelled) return;
+      if (r.ok) {
+        setTranscriptLines(r.lines);
+        setTranscriptProbe("ready");
+      } else {
+        setTranscriptLines([]);
+        setTranscriptProbe("error");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation, loadTranscript]);
+
+  const openTranscriptReplay = useCallback(async () => {
+    setTranscriptModalError(null);
+    setTranscriptReplayOpen(true);
+    setTranscriptModalLoading(true);
+    const r = await loadTranscript();
+    setTranscriptModalLoading(false);
+    if (r.ok) {
+      setTranscriptLines(r.lines);
+    } else {
+      setTranscriptModalError("Could not load transcript. Try again.");
+    }
+  }, [loadTranscript]);
 
   // Composer / mic disabled flags (via useConversationDerived). Passed into
   // `useConversationActions` so speech recognition stays decoupled from
@@ -356,7 +442,7 @@ export default function ConversationDetailPage() {
               )}
             </div>
           ) : (
-            <div className="mb-4 flex items-center gap-3">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
               <h2
                 className="shrink-0 cursor-default text-2xl font-bold"
                 title="Click Rename to edit"
@@ -370,6 +456,15 @@ export default function ConversationDetailPage() {
                     <span className="ml-2 text-emerald-300/80">Priority mode enabled</span>
                   )}
                 </div>
+              )}
+              {transcriptProbe === "ready" && transcriptLines.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void openTranscriptReplay()}
+                  className="shrink-0 rounded-lg border border-emerald-500/45 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.1)] transition hover:border-emerald-400/60 hover:bg-emerald-500/20"
+                >
+                  View Transcript 🎙️
+                </button>
               )}
             </div>
           )}
@@ -986,6 +1081,14 @@ export default function ConversationDetailPage() {
         </div>
         </div>
       </div>
+
+      <TranscriptReplayModal
+        open={transcriptReplayOpen}
+        onClose={() => setTranscriptReplayOpen(false)}
+        lines={transcriptLines}
+        isLoading={transcriptModalLoading}
+        errorMessage={transcriptModalError}
+      />
 
       <EnforcementPromptModal
         open={enforcementOpen}
