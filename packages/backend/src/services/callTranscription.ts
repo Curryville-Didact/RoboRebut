@@ -74,7 +74,7 @@ function extractObjectionsFromTranscript(transcript: string): string[] {
 
 function detectVerticalFromTranscript(transcript: string): string | null {
   const verticalPatterns: Record<string, RegExp[]> = {
-    mca: [/merchant cash advance/i, /MCA/i, /factor rate/i, /retrieval rate/i],
+    mca: [/merchant cash advance/i, /MCA/i, /factor rate/i, /retrieval rate/i, /payback/i, /holdback/i, /daily payment/i, /weekly payment/i, /advance/i, /funded/i],
     business_line_of_credit: [/line of credit/i, /LOC/i, /revolving/i, /draw/i],
     sba_loan: [/SBA/i, /small business administration/i, /SBA loan/i],
     equipment_financing: [/equipment/i, /machinery/i, /vehicle/i, /truck/i],
