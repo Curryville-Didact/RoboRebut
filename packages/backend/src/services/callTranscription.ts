@@ -1,5 +1,3 @@
-import { DefaultDeepgramClient } from "@deepgram/sdk";
-
 const SUPPORTED_FORMATS = ["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"];
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
@@ -42,14 +40,24 @@ export async function transcribeCallAudio(
   console.log('[Deepgram] key length:', deepgramKey?.length, 'first8:', deepgramKey?.substring(0, 8));
   if (!deepgramKey) throw new Error("DEEPGRAM_API_KEY not configured.");
 
-  const dg = new DefaultDeepgramClient({ apiKey: deepgramKey });
+  const dgResponse = await fetch(
+    "https://api.deepgram.com/v1/listen?model=nova-2&diarize=true&punctuate=true&utterances=true",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${deepgramKey}`,
+        "Content-Type": "audio/mp4",
+      },
+      body: audioBuffer,
+    }
+  );
 
-  const dgRes = await dg.listen.v1.media.transcribeFile(audioBuffer, {
-    model: "nova-2",
-    diarize: true,
-    punctuate: true,
-    utterances: true,
-  });
+  if (!dgResponse.ok) {
+    const errText = await dgResponse.text().catch(() => "");
+    throw new Error(`Deepgram API error ${dgResponse.status}: ${errText}`);
+  }
+
+  const dgRes = await dgResponse.json();
 
   const transcript = formatDeepgramTranscript(dgRes);
   const detectedObjections = extractObjectionsFromTranscript(transcript);
