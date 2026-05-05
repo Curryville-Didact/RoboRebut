@@ -137,7 +137,7 @@ export function resolveAssistantHeaderMetadata(
       parsedObjType,
       rawObjType,
       legObj
-    ) ?? "unknown";
+    ) ?? null;
 
   const objectionDisplayOverride = readPrecallObjectionTypeLabelForHeader(
     parsedStructured,

@@ -55,14 +55,22 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
   });
 
   // POST /api/conversations
-  fastify.post<{ Body: { title?: string } }>("/conversations", {
+  fastify.post<{
+    Body: { title?: string; deal_context?: Record<string, unknown> | null };
+  }>("/conversations", {
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const { title = "New Conversation" } = request.body ?? {};
 
       const { data, error } = await fastify.supabase
         .from("conversations")
-        .insert({ user_id: request.user.id, title })
+        .insert({
+          user_id: request.user.id,
+          title,
+          ...(request.body?.deal_context !== undefined
+            ? { deal_context: request.body.deal_context }
+            : {}),
+        })
         .select()
         .single();
 

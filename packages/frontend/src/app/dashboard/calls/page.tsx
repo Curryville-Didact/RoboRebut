@@ -177,7 +177,12 @@ export default function CallsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ title: title || "Call transcript" }),
+        body: JSON.stringify({
+          title: title || "Call transcript",
+          deal_context: result.detectedVertical
+            ? { dealType: result.detectedVertical }
+            : undefined,
+        }),
       });
 
       const created = (await createRes.json()) as { id?: string; error?: string };
