@@ -3,13 +3,11 @@ const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
 const VERTICALS = [
   "mca",
-  "business_line_of_credit",
-  "sba_loan",
-  "term_loan",
-  "equipment_financing",
-  "invoice_factoring",
-  "merchant_services",
-  "general",
+  "loc",
+  "equipment",
+  "invoice",
+  "sba",
+  "other",
 ] as const;
 type Vertical = (typeof VERTICALS)[number];
 const VERTICAL_SET = new Set<string>(VERTICALS);
@@ -68,7 +66,7 @@ export async function transcribeCallAudio(
     detectedVertical = classified;
   } catch (err) {
     console.error("[callTranscription] vertical classification failed; using regex fallback", err);
-    detectedVertical = detectVerticalFromTranscript(transcript) ?? "general";
+    detectedVertical = detectVerticalFromTranscript(transcript) ?? "other";
   }
 
   return { transcript, detectedObjections, detectedVertical, durationEstimate: null };
@@ -118,11 +116,18 @@ async function classifyVerticalWithOpenAI(transcript: string): Promise<Vertical>
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   if (!openaiKey) throw new Error("OPENAI_API_KEY not configured.");
 
-  const systemPrompt =
-    "You are a financial product classifier. Analyze this sales call transcript and \n" +
-    "   identify the financial product being discussed. Respond with exactly one word from \n" +
-    "   this list: mca, business_line_of_credit, sba_loan, term_loan, equipment_financing, \n" +
-    "   invoice_factoring, merchant_services, general. No explanation, just the single word.";
+  const systemPrompt = [
+    "You are a financial product classifier. Analyze this sales call transcript and identify the financial product being discussed.",
+    "",
+    "Return ONLY the vertical string, lowercase, no explanation.",
+    "",
+    "Valid verticals: mca, loc, equipment, invoice, sba, other",
+    "",
+    "Rules to distinguish LOC vs MCA:",
+    '- If the transcript mentions "line of credit", "credit line", "revolving", "draw down", "LOC", or "working capital line" → classify as "loc".',
+    '- Select "mca" ONLY if the transcript mentions "daily payments", "factor rate", "merchant cash advance", "split", "holdback", or "future receivables".',
+    "- Cash flow problems alone do NOT indicate MCA — they are common in LOC deals too.",
+  ].join("\n");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -150,7 +155,7 @@ async function classifyVerticalWithOpenAI(transcript: string): Promise<Vertical>
   };
   const raw = data.choices?.[0]?.message?.content;
   const word = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (!VERTICAL_SET.has(word)) return "general";
+  if (!VERTICAL_SET.has(word)) return "other";
   return word as Vertical;
 }
 
@@ -178,29 +183,22 @@ function extractObjectionsFromTranscript(transcript: string): string[] {
 // Regex fallback (kept intentionally for resilience when LLM classifier is unavailable)
 function detectVerticalFromTranscript(transcript: string): string | null {
   const verticalPatterns: Record<string, RegExp[]> = {
+    loc: [
+      /line of credit/i,
+      /credit line/i,
+      /revolving credit/i,
+      /\bloc\b/i,
+    ],
     mca: [
       /merchant cash advance/i,
-      /MCA/i,
       /factor rate/i,
-      /retrieval rate/i,
-      /payback/i,
       /holdback/i,
       /daily payment/i,
-      /weekly payment/i,
-      /advance/i,
-      /funded/i,
+      /future receivables/i,
     ],
-    business_line_of_credit: [/line of credit/i, /LOC/i, /revolving/i, /draw/i],
-    sba_loan: [/SBA/i, /small business administration/i, /SBA loan/i],
-    equipment_financing: [/equipment/i, /machinery/i, /vehicle/i, /truck/i],
-    invoice_factoring: [/invoice/i, /factoring/i, /receivables/i, /accounts receivable/i],
-    term_loan: [/term loan/i, /fixed payment/i, /installment/i],
-    merchant_services: [
-      /processing/i,
-      /credit card processing/i,
-      /merchant services/i,
-      /interchange/i,
-    ],
+    sba: [/SBA/i, /small business administration/i, /SBA loan/i],
+    equipment: [/equipment/i, /machinery/i, /vehicle/i, /truck/i],
+    invoice: [/invoice/i, /factoring/i, /receivables/i, /accounts receivable/i],
   };
 
   for (const [vertical, patterns] of Object.entries(verticalPatterns)) {
