@@ -345,58 +345,62 @@ async function syncEntitlement(token: string): Promise<void> {
 
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>
-      ) : conversations.length === 0 ? (
-        <DashboardEmptyState
-          title="Start your first conversation"
-          description={emptySubtitle}
-          logo={<RebutBrandLogo variant={logoVariant} className="h-14 w-14" />}
-        >
-          <button
-            type="button"
-            onClick={() => void handleCreateConversation()}
-            disabled={creating}
-            className="rounded-lg border border-white/20 bg-white/[0.08] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.12] disabled:opacity-60"
-          >
-            {creating ? "Creating…" : "+ New Conversation"}
-          </button>
-          {isFounder ? (
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("demo", "1");
-                  router.push(`${url.pathname}?${url.searchParams.toString()}`);
-                } catch {
-                  router.push("/dashboard?demo=1");
-                }
-              }}
-              className="rounded-lg border border-white/15 bg-transparent px-5 py-2.5 text-sm font-semibold text-gray-300 transition hover:bg-white/[0.06]"
-            >
-              Load demo workspace
-            </button>
-          ) : null}
-          <div className="w-full" />
-          <OnboardingSteps />
-        </DashboardEmptyState>
       ) : (
-        <div className="space-y-3">
-          {conversations.map((conv) => (
-            <Link
-              key={conv.id}
-              href={`/dashboard/${conv.id}`}
-              className="block rounded-2xl border border-white/[0.1] bg-gradient-to-b from-white/[0.04] to-black/30 p-5 transition hover:border-emerald-500/25 hover:bg-white/[0.05] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+        <>
+          <OnboardingSteps hasUploadedCall={conversations.length > 0} />
+          {conversations.length === 0 ? (
+            <DashboardEmptyState
+              title="Start your first conversation"
+              description={emptySubtitle}
+              logo={<RebutBrandLogo variant={logoVariant} className="h-14 w-14" />}
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-semibold text-white">{conv.title}</p>
-                <p className="shrink-0 text-xs text-gray-500">
-                  {formatDate(conv.updated_at)}
-                </p>
-              </div>
-              <p className="mt-2 text-xs text-gray-500">Created {formatDate(conv.created_at)}</p>
-            </Link>
-          ))}
-        </div>
+              <button
+                type="button"
+                onClick={() => void handleCreateConversation()}
+                disabled={creating}
+                className="rounded-lg border border-white/20 bg-white/[0.08] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.12] disabled:opacity-60"
+              >
+                {creating ? "Creating…" : "+ New Conversation"}
+              </button>
+              {isFounder ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      const url = new URL(window.location.href);
+                      url.searchParams.set("demo", "1");
+                      router.push(`${url.pathname}?${url.searchParams.toString()}`);
+                    } catch {
+                      router.push("/dashboard?demo=1");
+                    }
+                  }}
+                  className="rounded-lg border border-white/15 bg-transparent px-5 py-2.5 text-sm font-semibold text-gray-300 transition hover:bg-white/[0.06]"
+                >
+                  Load demo workspace
+                </button>
+              ) : null}
+              <div className="w-full" />
+            </DashboardEmptyState>
+          ) : (
+            <div className="space-y-3">
+              {conversations.map((conv) => (
+                <Link
+                  key={conv.id}
+                  href={`/dashboard/${conv.id}`}
+                  className="block rounded-2xl border border-white/[0.1] bg-gradient-to-b from-white/[0.04] to-black/30 p-5 transition hover:border-emerald-500/25 hover:bg-white/[0.05] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-white">{conv.title}</p>
+                    <p className="shrink-0 text-xs text-gray-500">
+                      {formatDate(conv.updated_at)}
+                    </p>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">Created {formatDate(conv.created_at)}</p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
