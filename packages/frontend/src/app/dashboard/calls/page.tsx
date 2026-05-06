@@ -218,6 +218,7 @@ export default function CallsPage() {
         },
         body: JSON.stringify({
           title,
+          transcript: result.transcript.trim(),
           deal_context: result.detectedVertical
             ? { dealType: result.detectedVertical }
             : undefined,

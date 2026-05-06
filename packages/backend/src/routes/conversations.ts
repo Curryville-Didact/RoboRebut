@@ -14,6 +14,7 @@ type ConversationRow = {
   user_id: string;
   title: string;
   deal_context: DealContext | null;
+  call_transcript?: string | null;
   client_context?: ClientContext | null;
   created_at: string;
   updated_at: string;
@@ -56,17 +57,25 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
 
   // POST /api/conversations
   fastify.post<{
-    Body: { title?: string; deal_context?: Record<string, unknown> | null };
+    Body: {
+      title?: string;
+      deal_context?: Record<string, unknown> | null;
+      transcript?: string;
+    };
   }>("/conversations", {
     preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
       const { title = "New Conversation" } = request.body ?? {};
+
+      const transcript =
+        typeof request.body?.transcript === "string" ? request.body.transcript.trim() : "";
 
       const { data, error } = await fastify.supabase
         .from("conversations")
         .insert({
           user_id: request.user.id,
           title,
+          ...(transcript ? { call_transcript: transcript } : {}),
           ...(request.body?.deal_context !== undefined
             ? { deal_context: request.body.deal_context }
             : {}),

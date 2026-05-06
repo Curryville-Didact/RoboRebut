@@ -38,6 +38,8 @@ export interface Conversation {
   id: string;
   title: string;
   deal_context: DealContext | null;
+  /** Optional uploaded call transcript stored on the conversation row. */
+  call_transcript?: string | null;
   /** Account intelligence JSONB; absent on legacy rows. */
   client_context?: ClientContext | null;
   created_at: string;

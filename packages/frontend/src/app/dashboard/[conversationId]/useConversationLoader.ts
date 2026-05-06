@@ -92,6 +92,7 @@ export function useConversationLoader(args: {
         id: conversationId,
         title: conversationId.replace(/demo_/g, "").replace(/_/g, " "),
         deal_context: null,
+        call_transcript: null,
         client_context: null,
         created_at: thread[0]?.created_at ?? new Date().toISOString(),
         updated_at: thread[thread.length - 1]?.created_at ?? new Date().toISOString(),
