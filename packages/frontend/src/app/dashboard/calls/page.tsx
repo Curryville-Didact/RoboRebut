@@ -230,24 +230,6 @@ export default function CallsPage() {
         return;
       }
 
-      const msgRes = await fetch(`${API_URL}/api/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          conversation_id: created.id,
-          content: result.transcript.trim(),
-        }),
-      });
-
-      if (!msgRes.ok) {
-        const errBody = (await msgRes.json().catch(() => null)) as { error?: string } | null;
-        setErrorMsg(errBody?.error ?? "Could not send transcript to coach.");
-        return;
-      }
-
       router.push(`/dashboard/${created.id}`);
     } catch {
       setErrorMsg("Something went wrong. Please try again.");
