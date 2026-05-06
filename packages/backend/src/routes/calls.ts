@@ -50,6 +50,7 @@ export async function callsRoutes(app: FastifyInstance) {
         transcript: result.transcript,
         detectedObjections: result.detectedObjections,
         detectedVertical: result.detectedVertical,
+        detectedIndustry: result.industry,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Transcription failed.";

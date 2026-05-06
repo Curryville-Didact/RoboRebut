@@ -16,6 +16,7 @@ export interface TranscriptionResult {
   transcript: string;
   detectedObjections: string[];
   detectedVertical: string | null;
+  industry: string;
   durationEstimate: string | null;
 }
 
@@ -60,15 +61,24 @@ export async function transcribeCallAudio(
   const detectedObjections = extractObjectionsFromTranscript(transcript);
 
   let detectedVertical: string | null = null;
+  let industry = "Unknown";
   try {
-    const classified = await classifyVerticalWithOpenAI(transcript);
-    detectedVertical = classified;
+    const classified = await classifyTranscriptWithOpenAI(transcript);
+    detectedVertical = classified.vertical;
+    industry = classified.industry;
   } catch (err) {
     console.error("[callTranscription] vertical classification failed; using regex fallback", err);
     detectedVertical = detectVerticalFromTranscript(transcript) ?? "other";
+    industry = "Unknown";
   }
 
-  return { transcript, detectedObjections, detectedVertical, durationEstimate: null };
+  return {
+    transcript,
+    detectedObjections,
+    detectedVertical,
+    industry,
+    durationEstimate: null,
+  };
 }
 
 function formatDeepgramTranscript(dgRes: unknown): string {
@@ -111,21 +121,43 @@ function formatDeepgramTranscript(dgRes: unknown): string {
   return "";
 }
 
-async function classifyVerticalWithOpenAI(transcript: string): Promise<Vertical> {
+function parseClassificationJson(content: string): { vertical?: string; industry?: string } {
+  const trimmed = content.trim();
+  const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/im);
+  const jsonText = fence?.[1]?.trim() ?? trimmed;
+  try {
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    const vertical =
+      typeof parsed.vertical === "string" ? parsed.vertical.trim().toLowerCase() : undefined;
+    const industry =
+      typeof parsed.industry === "string" ? parsed.industry.trim() : undefined;
+    return { vertical, industry };
+  } catch {
+    return {};
+  }
+}
+
+async function classifyTranscriptWithOpenAI(
+  transcript: string
+): Promise<{ vertical: Vertical; industry: string }> {
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   if (!openaiKey) throw new Error("OPENAI_API_KEY not configured.");
 
   const systemPrompt = [
-    "You are a financial product classifier. Analyze this sales call transcript and identify the financial product being discussed.",
+    "You are a financial product classifier. Analyze this sales call transcript.",
     "",
-    "Return ONLY the vertical string, lowercase, no explanation.",
+    'Respond with ONLY valid JSON (no markdown, no explanation) in this exact shape:',
+    '{"vertical":"<slug>","industry":"<label>"}',
     "",
-    "Valid verticals: mca, loc, equipment, invoice, sba, other",
+    'vertical must be one of: mca, loc, equipment, invoice, sba, other',
     "",
     "Rules to distinguish LOC vs MCA:",
-    '- If the transcript mentions "line of credit", "credit line", "revolving", "draw down", "LOC", or "working capital line" → classify as "loc".',
-    '- Select "mca" ONLY if the transcript mentions "daily payments", "factor rate", "merchant cash advance", "split", "holdback", or "future receivables".',
+    '- If the transcript mentions "line of credit", "credit line", "revolving", "draw down", "LOC", or "working capital line" → vertical "loc".',
+    '- Select vertical "mca" ONLY if the transcript mentions "daily payments", "factor rate", "merchant cash advance", "split", "holdback", or "future receivables".',
     "- Cash flow problems alone do NOT indicate MCA — they are common in LOC deals too.",
+    "",
+    "Extract the merchant's industry or business type mentioned in the transcript (e.g. Construction, Trucking, Restaurant, Retail, Staffing, Medical, Auto).",
+    'Use a short Title Case label when clear. If you cannot determine an industry from the transcript, set industry to exactly "Unknown".',
   ].join("\n");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -141,6 +173,7 @@ async function classifyVerticalWithOpenAI(transcript: string): Promise<Vertical>
         { role: "user", content: transcript },
       ],
       temperature: 0,
+      response_format: { type: "json_object" },
     }),
   });
 
@@ -153,9 +186,12 @@ async function classifyVerticalWithOpenAI(transcript: string): Promise<Vertical>
     choices?: Array<{ message?: { content?: unknown } }>;
   };
   const raw = data.choices?.[0]?.message?.content;
-  const word = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (!VERTICAL_SET.has(word)) return "other";
-  return word as Vertical;
+  const text = typeof raw === "string" ? raw : "";
+  const { vertical: vRaw, industry: indRaw } = parseClassificationJson(text);
+  const vertical = vRaw && VERTICAL_SET.has(vRaw) ? (vRaw as Vertical) : ("other" as Vertical);
+  const industry =
+    indRaw && indRaw.length > 0 ? indRaw : "Unknown";
+  return { vertical, industry };
 }
 
 // Keep extractObjectionsFromTranscript exactly as it is today, no changes

@@ -14,7 +14,43 @@ interface TranscriptionResult {
   transcript: string;
   detectedObjections: string[];
   detectedVertical: string | null;
+  detectedIndustry: string;
   error?: string;
+}
+
+function buildConversationTitle(
+  vertical: string | null,
+  industry: string | null
+): string {
+  const formatVerticalForTitle = (v: string): string => {
+    switch (v.trim().toLowerCase()) {
+      case "loc":
+        return "LOC";
+      case "mca":
+        return "MCA";
+      case "equipment":
+        return "Equipment";
+      case "invoice":
+        return "Invoice";
+      case "sba":
+        return "SBA";
+      default:
+        return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+    }
+  };
+
+  const hasVertical = vertical != null && vertical.trim() !== "";
+  const industryTrimmed = industry?.trim() ?? "";
+  const hasUsefulIndustry =
+    industryTrimmed !== "" && industryTrimmed.toLowerCase() !== "unknown";
+
+  if (hasVertical && hasUsefulIndustry) {
+    return `${formatVerticalForTitle(vertical!)} - ${industryTrimmed}`;
+  }
+  if (hasVertical) {
+    return `${formatVerticalForTitle(vertical!)} - Call`;
+  }
+  return "Discovery Call";
 }
 
 const OBJECTION_LABELS: Record<string, string> = {
@@ -144,6 +180,8 @@ export default function CallsPage() {
           data.detectedVertical === null || typeof data.detectedVertical === "string"
             ? (data.detectedVertical as string | null)
             : null,
+        detectedIndustry:
+          typeof data.detectedIndustry === "string" ? data.detectedIndustry : "Unknown",
       });
       setUploadState("done");
     } catch {
@@ -167,9 +205,10 @@ export default function CallsPage() {
       }
 
       const token = session.access_token;
-      const title =
-        result.transcript.trim().slice(0, 48) +
-        (result.transcript.trim().length > 48 ? "…" : "");
+      const title = buildConversationTitle(
+        result.detectedVertical,
+        result.detectedIndustry
+      );
 
       const createRes = await fetch(`${API_URL}/api/conversations`, {
         method: "POST",
@@ -178,7 +217,7 @@ export default function CallsPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          title: title || "Call transcript",
+          title,
           deal_context: result.detectedVertical
             ? { dealType: result.detectedVertical }
             : undefined,
