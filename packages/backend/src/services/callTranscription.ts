@@ -17,7 +17,42 @@ export interface TranscriptionResult {
   detectedObjections: string[];
   detectedVertical: string | null;
   industry: string;
+  businessName: string | null;
+  monthlyRevenue: string | null;
+  painPoints: string | null;
+  statedObjections: string | null;
+  trustFlags: string | null;
+  urgency: string | null;
+  decisionMaker: string | null;
   durationEstimate: string | null;
+}
+
+function emptyClientProfileFields(): Pick<
+  TranscriptionResult,
+  | "businessName"
+  | "monthlyRevenue"
+  | "painPoints"
+  | "statedObjections"
+  | "trustFlags"
+  | "urgency"
+  | "decisionMaker"
+> {
+  return {
+    businessName: null,
+    monthlyRevenue: null,
+    painPoints: null,
+    statedObjections: null,
+    trustFlags: null,
+    urgency: null,
+    decisionMaker: null,
+  };
+}
+
+function parseNullableJsonString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") return null;
+  const t = value.trim();
+  return t === "" ? null : t;
 }
 
 export async function transcribeCallAudio(
@@ -62,10 +97,20 @@ export async function transcribeCallAudio(
 
   let detectedVertical: string | null = null;
   let industry = "Unknown";
+  const extras = emptyClientProfileFields();
   try {
     const classified = await classifyTranscriptWithOpenAI(transcript);
     detectedVertical = classified.vertical;
     industry = classified.industry;
+    Object.assign(extras, {
+      businessName: classified.businessName,
+      monthlyRevenue: classified.monthlyRevenue,
+      painPoints: classified.painPoints,
+      statedObjections: classified.statedObjections,
+      trustFlags: classified.trustFlags,
+      urgency: classified.urgency,
+      decisionMaker: classified.decisionMaker,
+    });
   } catch (err) {
     console.error("[callTranscription] vertical classification failed; using regex fallback", err);
     detectedVertical = detectVerticalFromTranscript(transcript) ?? "other";
@@ -77,6 +122,7 @@ export async function transcribeCallAudio(
     detectedObjections,
     detectedVertical,
     industry,
+    ...extras,
     durationEstimate: null,
   };
 }
@@ -121,7 +167,17 @@ function formatDeepgramTranscript(dgRes: unknown): string {
   return "";
 }
 
-function parseClassificationJson(content: string): { vertical?: string; industry?: string } {
+function parseClassificationJson(content: string): {
+  vertical?: string;
+  industry?: string;
+  businessName: string | null;
+  monthlyRevenue: string | null;
+  painPoints: string | null;
+  statedObjections: string | null;
+  trustFlags: string | null;
+  urgency: string | null;
+  decisionMaker: string | null;
+} {
   const trimmed = content.trim();
   const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/im);
   const jsonText = fence?.[1]?.trim() ?? trimmed;
@@ -131,23 +187,41 @@ function parseClassificationJson(content: string): { vertical?: string; industry
       typeof parsed.vertical === "string" ? parsed.vertical.trim().toLowerCase() : undefined;
     const industry =
       typeof parsed.industry === "string" ? parsed.industry.trim() : undefined;
-    return { vertical, industry };
+    return {
+      vertical,
+      industry,
+      businessName: parseNullableJsonString(parsed.businessName),
+      monthlyRevenue: parseNullableJsonString(parsed.monthlyRevenue),
+      painPoints: parseNullableJsonString(parsed.painPoints),
+      statedObjections: parseNullableJsonString(parsed.statedObjections),
+      trustFlags: parseNullableJsonString(parsed.trustFlags),
+      urgency: parseNullableJsonString(parsed.urgency),
+      decisionMaker: parseNullableJsonString(parsed.decisionMaker),
+    };
   } catch {
-    return {};
+    return emptyClientProfileFields();
   }
 }
 
-async function classifyTranscriptWithOpenAI(
-  transcript: string
-): Promise<{ vertical: Vertical; industry: string }> {
+async function classifyTranscriptWithOpenAI(transcript: string): Promise<{
+  vertical: Vertical;
+  industry: string;
+  businessName: string | null;
+  monthlyRevenue: string | null;
+  painPoints: string | null;
+  statedObjections: string | null;
+  trustFlags: string | null;
+  urgency: string | null;
+  decisionMaker: string | null;
+}> {
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   if (!openaiKey) throw new Error("OPENAI_API_KEY not configured.");
 
   const systemPrompt = [
-    "You are a financial product classifier. Analyze this sales call transcript.",
+    "You extract structured deal intelligence from a sales call transcript.",
     "",
-    'Respond with ONLY valid JSON (no markdown, no explanation) in this exact shape:',
-    '{"vertical":"<slug>","industry":"<label>"}',
+    'Respond with ONLY valid JSON (no markdown, no explanation) using exactly these keys:',
+    '{"vertical":"<slug>","industry":"<label>","businessName":null,"monthlyRevenue":null,"painPoints":null,"statedObjections":null,"trustFlags":null,"urgency":null,"decisionMaker":null}',
     "",
     'vertical must be one of: mca, loc, equipment, invoice, sba, other',
     "",
@@ -158,6 +232,15 @@ async function classifyTranscriptWithOpenAI(
     "",
     "Extract the merchant's industry or business type mentioned in the transcript (e.g. Construction, Trucking, Restaurant, Retail, Staffing, Medical, Auto).",
     'Use a short Title Case label when clear. If you cannot determine an industry from the transcript, set industry to exactly "Unknown".',
+    "",
+    "businessName: company or trade name if explicitly mentioned; otherwise null.",
+    "monthlyRevenue: revenue amount or range exactly as the merchant described it (e.g. \"$80k a month\"); otherwise null.",
+    "painPoints: brief summary of cash flow or operational pain mentioned; otherwise null.",
+    "statedObjections: comma-separated list of objections or resistance raised on the call; otherwise null.",
+    "trustFlags: skepticism, bad past experiences with lenders, hesitation about terms; otherwise null.",
+    "urgency: any timeline or urgency language; otherwise null.",
+    "decisionMaker: role if mentioned (e.g. owner, CFO, controller); otherwise null.",
+    "Use JSON null for unknown fields — never empty strings.",
   ].join("\n");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -187,11 +270,23 @@ async function classifyTranscriptWithOpenAI(
   };
   const raw = data.choices?.[0]?.message?.content;
   const text = typeof raw === "string" ? raw : "";
-  const { vertical: vRaw, industry: indRaw } = parseClassificationJson(text);
+  const parsed = parseClassificationJson(text);
+  const vRaw = parsed.vertical;
+  const indRaw = parsed.industry;
   const vertical = vRaw && VERTICAL_SET.has(vRaw) ? (vRaw as Vertical) : ("other" as Vertical);
   const industry =
     indRaw && indRaw.length > 0 ? indRaw : "Unknown";
-  return { vertical, industry };
+  return {
+    vertical,
+    industry,
+    businessName: parsed.businessName,
+    monthlyRevenue: parsed.monthlyRevenue,
+    painPoints: parsed.painPoints,
+    statedObjections: parsed.statedObjections,
+    trustFlags: parsed.trustFlags,
+    urgency: parsed.urgency,
+    decisionMaker: parsed.decisionMaker,
+  };
 }
 
 // Keep extractObjectionsFromTranscript exactly as it is today, no changes

@@ -61,6 +61,7 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       title?: string;
       deal_context?: Record<string, unknown> | null;
       transcript?: string;
+      client_context?: ClientContext | null;
     };
   }>("/conversations", {
     preHandler: [fastify.authenticate],
@@ -78,6 +79,9 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
           ...(transcript ? { call_transcript: transcript } : {}),
           ...(request.body?.deal_context !== undefined
             ? { deal_context: request.body.deal_context }
+            : {}),
+          ...(request.body?.client_context !== undefined
+            ? { client_context: request.body.client_context }
             : {}),
         })
         .select()

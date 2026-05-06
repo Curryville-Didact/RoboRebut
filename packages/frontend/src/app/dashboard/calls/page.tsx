@@ -15,7 +15,22 @@ interface TranscriptionResult {
   detectedObjections: string[];
   detectedVertical: string | null;
   detectedIndustry: string;
+  businessName: string | null;
+  monthlyRevenue: string | null;
+  painPoints: string | null;
+  statedObjections: string | null;
+  trustFlags: string | null;
+  urgency: string | null;
+  decisionMaker: string | null;
   error?: string;
+}
+
+function transcribeNullableString(data: Record<string, unknown>, key: string): string | null {
+  const v = data[key];
+  if (v === null) return null;
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "" ? null : t;
 }
 
 function buildConversationTitle(
@@ -170,18 +185,26 @@ export default function CallsPage() {
         return;
       }
 
+      const payload = data as Record<string, unknown>;
       setResult({
         ok: true,
-        transcript: String(data.transcript ?? ""),
-        detectedObjections: Array.isArray(data.detectedObjections)
-          ? (data.detectedObjections as string[])
+        transcript: String(payload.transcript ?? ""),
+        detectedObjections: Array.isArray(payload.detectedObjections)
+          ? (payload.detectedObjections as string[])
           : [],
         detectedVertical:
-          data.detectedVertical === null || typeof data.detectedVertical === "string"
-            ? (data.detectedVertical as string | null)
+          payload.detectedVertical === null || typeof payload.detectedVertical === "string"
+            ? (payload.detectedVertical as string | null)
             : null,
         detectedIndustry:
-          typeof data.detectedIndustry === "string" ? data.detectedIndustry : "Unknown",
+          typeof payload.detectedIndustry === "string" ? payload.detectedIndustry : "Unknown",
+        businessName: transcribeNullableString(payload, "businessName"),
+        monthlyRevenue: transcribeNullableString(payload, "monthlyRevenue"),
+        painPoints: transcribeNullableString(payload, "painPoints"),
+        statedObjections: transcribeNullableString(payload, "statedObjections"),
+        trustFlags: transcribeNullableString(payload, "trustFlags"),
+        urgency: transcribeNullableString(payload, "urgency"),
+        decisionMaker: transcribeNullableString(payload, "decisionMaker"),
       });
       setUploadState("done");
     } catch {
@@ -222,6 +245,16 @@ export default function CallsPage() {
           deal_context: result.detectedVertical
             ? { dealType: result.detectedVertical }
             : undefined,
+          client_context: {
+            businessName: result.businessName ?? null,
+            industry: result.detectedIndustry ?? null,
+            monthlyRevenueText: result.monthlyRevenue ?? null,
+            painPoints: result.painPoints ?? null,
+            statedObjections: result.statedObjections ?? null,
+            trustFlags: result.trustFlags ?? null,
+            urgencyTimeline: result.urgency ?? null,
+            decisionMaker: result.decisionMaker ?? null,
+          },
         }),
       });
 

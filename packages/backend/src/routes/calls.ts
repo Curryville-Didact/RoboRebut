@@ -51,6 +51,13 @@ export async function callsRoutes(app: FastifyInstance) {
         detectedObjections: result.detectedObjections,
         detectedVertical: result.detectedVertical,
         detectedIndustry: result.industry,
+        businessName: result.businessName,
+        monthlyRevenue: result.monthlyRevenue,
+        painPoints: result.painPoints,
+        statedObjections: result.statedObjections,
+        trustFlags: result.trustFlags,
+        urgency: result.urgency,
+        decisionMaker: result.decisionMaker,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Transcription failed.";
