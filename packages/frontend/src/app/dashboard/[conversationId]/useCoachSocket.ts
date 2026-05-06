@@ -1,6 +1,9 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { connectAndStream } from "@/lib/liveWsClient";
 import { API_URL } from "@/lib/env";
+import { extractPrimaryRebuttalScript } from "@/lib/extractPrimaryRebuttalScript";
+import { polishLiveSpeakableScript } from "@/lib/liveVoicePolish";
+import { parseStructuredReplySafe } from "@/lib/parseStructuredReply";
 import {
   parseApiErrorPayload,
   resolveGenerationFailureUX,
@@ -18,6 +21,7 @@ import {
 
 export function useCoachSocket(args: {
   coachReplyMode: CoachReplyMode;
+  conversationTitle: string | null;
   selectedTone: string;
   usage: UsageSnapshot | null;
   inflightConvRef: MutableRefObject<string | null>;
@@ -40,6 +44,7 @@ export function useCoachSocket(args: {
 } {
   const {
     coachReplyMode,
+    conversationTitle,
     selectedTone,
     usage,
     inflightConvRef,
@@ -91,6 +96,8 @@ export function useCoachSocket(args: {
         let hasReceivedDelta = false;
         let hasCompleted = false;
         let delayedRefetchScheduled = false;
+
+        const coachMessagesPostUrl = `${API_URL}/api/messages`;
 
         const client = connectAndStream({
           token,
@@ -314,6 +321,55 @@ export function useCoachSocket(args: {
               );
               return toAdd.length > 0 ? [...out, ...toAdd] : out;
             });
+
+            // Phase 7 — passive capture (fail-open): record the final Live script shown.
+            const structured = parseStructuredReplySafe(
+              parsed.assistantMessage.structured_reply
+            );
+            const isLive =
+              parsed.coach_reply_mode === "live" || structured?.coachReplyMode === "live";
+            if (isLive) {
+              const rawScript =
+                structured?.rebuttals?.[0]?.sayThis?.trim() ||
+                structured?.callReadyLine?.trim() ||
+                extractPrimaryRebuttalScript(String(parsed.assistantMessage.content ?? "")) ||
+                String(parsed.assistantMessage.content ?? "").trim();
+              const finalLiveScript = rawScript
+                ? polishLiveSpeakableScript(rawScript, {
+                    situationLabel: structured?.liveResponseVisibility?.situationLabel ?? null,
+                  })
+                : "";
+              void fetch(
+                coachMessagesPostUrl.replace(/\/api\/messages$/, "/api/rebuttal-events"),
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({
+                    conversation_id: sentInConv,
+                    source_mode: "live",
+                    source_surface: "dashboard_conversation",
+                    merchant_message: text,
+                    final_live_script: finalLiveScript || null,
+                    objection_family:
+                      structured?.primaryObjectionType?.trim() ||
+                      structured?.objectionType?.trim() ||
+                      null,
+                    objection_type: parsed.assistantMessage.objection_type ?? null,
+                    strategy_tag: parsed.assistantMessage.strategy_used ?? null,
+                    tone_mode: parsed.assistantMessage.tone_used ?? null,
+                    selected_variant_text: rawScript || null,
+                    situation_label: structured?.liveResponseVisibility?.situationLabel ?? null,
+                    conversation_title: conversationTitle ?? null,
+                    created_at: parsed.assistantMessage.created_at ?? null,
+                  }),
+                }
+              ).catch((e) => {
+                console.error("[rebuttal-events] WS POST failed", e);
+              });
+            }
           } else {
             // If complete payload is unexpected, fall back to leaving streamed text and stop sending.
           }
@@ -394,6 +450,7 @@ export function useCoachSocket(args: {
     },
     [
       coachReplyMode,
+      conversationTitle,
       selectedTone,
       usage,
       inflightConvRef,

@@ -233,6 +233,7 @@ export default function ConversationDetailPage() {
 
   const { attemptCoachWsLiveSend } = useCoachSocket({
     coachReplyMode,
+    conversationTitle: conversation?.title ?? null,
     selectedTone,
     usage,
     inflightConvRef,
