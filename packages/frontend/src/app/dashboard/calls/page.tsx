@@ -229,8 +229,7 @@ export default function CallsPage() {
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight">Call transcription</h1>
           <p className="mt-1 max-w-xl text-sm text-gray-400">
-            Upload a short recording of a sales call. We transcribe it with Whisper and surface
-            likely objections and product hints.
+            Upload a short recording of a sales call. We transcribe it with Deepgram and surface likely objections and product hints.
           </p>
         </div>
       </div>

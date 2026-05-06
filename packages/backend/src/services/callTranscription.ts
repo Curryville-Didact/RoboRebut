@@ -35,7 +35,6 @@ export async function transcribeCallAudio(
   }
 
   const deepgramKey = process.env.DEEPGRAM_API_KEY?.trim();
-  console.log('[Deepgram] key length:', deepgramKey?.length, 'first8:', deepgramKey?.substring(0, 8));
   if (!deepgramKey) throw new Error("DEEPGRAM_API_KEY not configured.");
 
   const dgResponse = await fetch(
