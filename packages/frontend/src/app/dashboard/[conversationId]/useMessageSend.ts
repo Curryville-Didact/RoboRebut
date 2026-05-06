@@ -150,7 +150,8 @@ export function useMessageSend(args: {
         return;
       }
 
-      const res = await fetch(`${API_URL}/api/messages`, {
+      const coachMessagesPostUrl = `${API_URL}/api/messages`;
+      const res = await fetch(coachMessagesPostUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -288,32 +289,35 @@ export function useMessageSend(args: {
                 situationLabel: structured?.liveResponseVisibility?.situationLabel ?? null,
               })
             : "";
-          void fetch(`${API_URL}/api/rebuttal-events`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              conversation_id: sentInConv,
-              source_mode: "live",
-              source_surface: "dashboard_conversation",
-              merchant_message: text,
-              final_live_script: finalLiveScript || null,
-              objection_family:
-                structured?.primaryObjectionType?.trim() ||
-                structured?.objectionType?.trim() ||
-                null,
-              objection_type: parsed.assistantMessage.objection_type ?? null,
-              strategy_tag: parsed.assistantMessage.strategy_used ?? null,
-              tone_mode: parsed.assistantMessage.tone_used ?? null,
-              selected_variant_text: rawScript || null,
-              situation_label: structured?.liveResponseVisibility?.situationLabel ?? null,
-              conversation_title: conversation?.title ?? null,
-              created_at: parsed.assistantMessage.created_at ?? null,
-            }),
-          }).catch(() => {
-            /* best-effort */
+          void fetch(
+            coachMessagesPostUrl.replace(/\/api\/messages$/, "/api/rebuttal-events"),
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                conversation_id: sentInConv,
+                source_mode: "live",
+                source_surface: "dashboard_conversation",
+                merchant_message: text,
+                final_live_script: finalLiveScript || null,
+                objection_family:
+                  structured?.primaryObjectionType?.trim() ||
+                  structured?.objectionType?.trim() ||
+                  null,
+                objection_type: parsed.assistantMessage.objection_type ?? null,
+                strategy_tag: parsed.assistantMessage.strategy_used ?? null,
+                tone_mode: parsed.assistantMessage.tone_used ?? null,
+                selected_variant_text: rawScript || null,
+                situation_label: structured?.liveResponseVisibility?.situationLabel ?? null,
+                conversation_title: conversation?.title ?? null,
+                created_at: parsed.assistantMessage.created_at ?? null,
+              }),
+            }
+          ).catch((e) => {
+            console.error("[rebuttal-events] POST failed", e);
           });
         }
 
