@@ -32,7 +32,7 @@ export default function FounderAnalyticsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setError('Not authenticated'); setLoading(false); return; }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/founder/analytics`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/founder/analytics`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
