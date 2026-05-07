@@ -110,6 +110,12 @@ export default async function DashboardLayout({
                   Analytics
                 </Link>
                 <Link
+                  href="/dashboard/analytics/brokers"
+                  className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
+                >
+                  Broker Analytics
+                </Link>
+                <Link
                   href="/dashboard/founder/support"
                   className="block rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/10 hover:text-white"
                 >
