@@ -407,4 +407,71 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.send(response);
     },
   });
+
+  fastify.post('/billing/webhook', async (request, reply) => {
+    const secret = process.env.POLAR_WEBHOOK_SECRET;
+    if (!secret) {
+      fastify.log.error('[webhook] POLAR_WEBHOOK_SECRET not set');
+      return reply.status(500).send({ error: 'Webhook secret not configured' });
+    }
+
+    const signature = request.headers['polar-signature'] as string;
+    const bodyStr = JSON.stringify(request.body);
+
+    if (!signature || !bodyStr) {
+      return reply.status(400).send({ error: 'Missing signature or body' });
+    }
+
+    const crypto = await import('node:crypto');
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(bodyStr);
+    const expectedSig = hmac.digest('hex');
+
+    if (signature !== expectedSig) {
+      fastify.log.warn('[webhook] Invalid signature');
+      return reply.status(401).send({ error: 'Invalid signature' });
+    }
+
+    const event = request.body as any;
+    const eventType = event?.type as string;
+    fastify.log.info({ eventType }, '[webhook] Polar event received');
+
+    if (eventType === 'subscription.created' || eventType === 'subscription.updated') {
+      const sub = event?.data;
+      const customerEmail = sub?.customer?.email ?? sub?.user?.email;
+      const status = sub?.status;
+      const productName: string = (sub?.product?.name ?? '').toLowerCase();
+
+      let planType: string | null = null;
+      if (status === 'active') {
+        if (productName.includes('pro')) planType = 'pro';
+        else if (productName.includes('starter')) planType = 'starter';
+        else if (productName.includes('team')) planType = 'team';
+      }
+
+      if (customerEmail && planType) {
+        const { error } = await fastify.supabase
+          .from('profiles')
+          .update({ plan_type: planType })
+          .eq('email', customerEmail);
+        if (error) fastify.log.error({ error, customerEmail, planType }, '[webhook] Failed to update plan_type');
+        else fastify.log.info({ customerEmail, planType }, '[webhook] plan_type updated');
+      }
+    }
+
+    if (eventType === 'subscription.canceled' || eventType === 'subscription.revoked') {
+      const sub = event?.data;
+      const customerEmail = sub?.customer?.email ?? sub?.user?.email;
+      if (customerEmail) {
+        const { error } = await fastify.supabase
+          .from('profiles')
+          .update({ plan_type: 'free' })
+          .eq('email', customerEmail);
+        if (error) fastify.log.error({ error, customerEmail }, '[webhook] Failed to revert plan_type');
+        else fastify.log.info({ customerEmail }, '[webhook] plan_type reverted to free');
+      }
+    }
+
+    return reply.status(200).send({ received: true });
+  });
 }
