@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { BackendWebSocket } from "@/components/BackendWebSocket";
+import { MobileSidebar } from "@/components/dashboard/MobileSidebar";
 import { isFounderEmail } from "@/lib/founder";
 import DashboardViewportLock from "../../components/dashboard/DashboardViewportLock";
 
@@ -25,8 +26,9 @@ export default async function DashboardLayout({
       <DashboardViewportLock />
       <div className="flex h-dvh overflow-hidden bg-black text-white">
       {/* Sidebar */}
-      <aside className="h-dvh shrink-0 overflow-y-auto border-r border-white/10">
-        <div className="flex w-64 flex-col p-6">
+      <MobileSidebar userEmail={userEmail} />
+      <aside className="hidden h-dvh shrink-0 overflow-y-auto border-r border-white/10 md:flex md:flex-col">
+        <div className="flex h-full min-h-0 w-64 flex-1 flex-col p-6">
           <div className="mb-8">
             <h1 className="text-xl font-bold">RoboRebut</h1>
             <p className="mt-1 text-xs text-gray-500 truncate">{userEmail}</p>
