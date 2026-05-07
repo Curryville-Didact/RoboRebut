@@ -33,6 +33,7 @@ type AnalyticsResponse = {
   breakdown: {
     families: {
       family: string;
+      /** Reviewed events in this family (API field name: `count`) */
       count: number;
       avgRating: number | null;
       weakPct: number;
@@ -66,6 +67,95 @@ function truncate(s: string, maxLen: number): string {
 
 function pct(v: number): string {
   return `${Math.round(v * 100)}%`;
+}
+
+function formatCoveragePct(c: number): string {
+  if (!Number.isFinite(c)) return "—";
+  return `${c % 1 === 0 ? c.toFixed(0) : c.toFixed(1)}%`;
+}
+
+function formatAvgRating(r: number | null | undefined): string {
+  if (r == null || !Number.isFinite(r)) return "—";
+  return r.toFixed(1);
+}
+
+function aggregateMissedContextPct(data: AnalyticsResponse): number {
+  const reviewed = data.cards.totalReviewed ?? 0;
+  if (reviewed <= 0) return 0;
+  const tag = data.series.outcomeTag?.find((t) => t.key === "missed_context");
+  const n = tag?.count ?? 0;
+  return n / reviewed;
+}
+
+function DailyActivityChart({ points }: { points: { day: string; count: number }[] }) {
+  if (points.length === 0) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
+        No trend data yet
+      </div>
+    );
+  }
+
+  const w = 800;
+  const h = 220;
+  const padL = 48;
+  const padR = 16;
+  const padT = 16;
+  const padB = 36;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const maxC = Math.max(1, ...points.map((p) => p.count));
+  const n = points.length;
+  const xAt = (i: number) => padL + (n <= 1 ? innerW / 2 : (i / Math.max(1, n - 1)) * innerW);
+  const yAt = (c: number) => padT + innerH - (c / maxC) * innerH;
+  const d = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i)} ${yAt(p.count)}`)
+    .join(" ");
+
+  const labelIdx =
+    n <= 10
+      ? points.map((_, i) => i)
+      : Array.from(new Set([0, Math.floor(n / 2), n - 1])).sort((a, b) => a - b);
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg
+        className="text-emerald-400/90"
+        viewBox={`0 0 ${w} ${h}`}
+        role="img"
+        aria-label="Daily rebuttal activity"
+      >
+        <rect width={w} height={h} fill="transparent" />
+        <line
+          x1={padL}
+          y1={padT + innerH}
+          x2={padL + innerW}
+          y2={padT + innerH}
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth={1}
+        />
+        <polyline fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" d={d} />
+        {points.map((p, i) => (
+          <circle key={`${p.day}-${i}`} cx={xAt(i)} cy={yAt(p.count)} r={4} fill="currentColor" />
+        ))}
+        {labelIdx.map((i) => {
+          const label = points[i]?.day ?? "";
+          return (
+            <text
+              key={`lbl-${i}-${label}`}
+              x={xAt(i)}
+              y={h - 10}
+              textAnchor="middle"
+              className="fill-gray-500"
+              style={{ fontSize: 11 }}
+            >
+              {label.length >= 10 ? label.slice(5) : label}
+            </text>
+          );
+        })}
+      </svg>
+    </div>
+  );
 }
 
 function Card({ label, value }: { label: string; value: string }) {
@@ -133,6 +223,24 @@ export default function PerformancePage() {
   );
   const familyBreakdown = useMemo(() => data?.breakdown.families ?? [], [data]);
 
+  const timesFacedByFamily = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const row of data?.series.objectionFamily ?? []) {
+      m.set(row.key, row.count);
+    }
+    return m;
+  }, [data]);
+
+  const topToneMode = useMemo(() => {
+    const first = data?.series.tone?.[0];
+    return first?.key ?? null;
+  }, [data]);
+
+  const missedContextAggregatePct = useMemo(() => {
+    if (!data) return 0;
+    return aggregateMissedContextPct(data);
+  }, [data]);
+
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       <div className="flex items-start justify-between gap-4">
@@ -170,16 +278,37 @@ export default function PerformancePage() {
       ) : (
         <>
           {/* SUMMARY CARDS */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <Card label="Rebuttals Generated" value={String(data.cards.totalCaptured ?? 0)} />
             <Card
               label="Most Common Objection"
               value={toTitleCaseFromSlug(data.cards.mostCommonFamily)}
             />
+            <Card label="Top Tone Used" value={toTitleCaseFromSlug(topToneMode)} />
             <Card
-              label="Top Tone Used"
-              value={toTitleCaseFromSlug(data.cards.mostCommonRhetoricalType)}
+              label="Review Coverage"
+              value={formatCoveragePct(data.cards.coveragePct ?? 0)}
             />
+            <Card label="Avg Rating" value={formatAvgRating(data.cards.avgRating)} />
+            <Card
+              label="Missed Context %"
+              value={
+                (data.cards.totalReviewed ?? 0) > 0
+                  ? pct(missedContextAggregatePct)
+                  : "—"
+              }
+            />
+          </div>
+
+          {/* DAILY ACTIVITY */}
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="text-sm font-semibold text-white">Daily activity</div>
+            <p className="mt-1 text-xs text-gray-500">
+              Rebuttals captured per day in the selected window.
+            </p>
+            <div className="mt-4">
+              <DailyActivityChart points={data.series.daily ?? []} />
+            </div>
           </div>
 
           {/* TOP OBJECTIONS YOU FACE */}
@@ -229,38 +358,48 @@ export default function PerformancePage() {
           {/* OBJECTION BREAKDOWN */}
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <div className="text-sm font-semibold text-white">OBJECTION BREAKDOWN</div>
-            <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
-              <div className="grid grid-cols-4 gap-3 bg-black/30 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <div>Objection Type</div>
-                <div className="text-right">Times Faced</div>
-                <div className="text-right">Weak %</div>
-                <div className="text-right">Repetitive %</div>
-              </div>
-              <div className="divide-y divide-white/5">
-                {familyBreakdown.length === 0 ? (
-                  <div className="px-3 py-3 text-sm text-gray-500">No breakdown data yet.</div>
-                ) : (
-                  familyBreakdown.map((r) => {
-                    const highlight = (r.weakPct ?? 0) > 0.3;
-                    return (
-                      <div
-                        key={r.family}
-                        className={`grid grid-cols-4 gap-3 px-3 py-2 text-sm ${
-                          highlight ? "bg-amber-500/10" : "bg-black/10"
-                        }`}
-                      >
-                        <div className="min-w-0 truncate text-gray-200">
-                          {toTitleCaseFromSlug(r.family)}
+            <div className="mt-3 overflow-x-auto overflow-hidden rounded-lg border border-white/10">
+              <div className="min-w-[720px]">
+                <div className="grid grid-cols-6 gap-3 bg-black/30 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <div>Objection Type</div>
+                  <div className="text-right">Times Faced</div>
+                  <div className="text-right">Reviewed</div>
+                  <div className="text-right">Weak %</div>
+                  <div className="text-right">Repetitive %</div>
+                  <div className="text-right">Missed Context %</div>
+                </div>
+                <div className="divide-y divide-white/5">
+                  {familyBreakdown.length === 0 ? (
+                    <div className="px-3 py-3 text-sm text-gray-500">No breakdown data yet.</div>
+                  ) : (
+                    familyBreakdown.map((r) => {
+                      const highlight = (r.weakPct ?? 0) > 0.3;
+                      const timesFaced = timesFacedByFamily.get(r.family) ?? 0;
+                      const timesReviewed = r.count;
+                      return (
+                        <div
+                          key={r.family}
+                          className={`grid grid-cols-6 gap-3 px-3 py-2 text-sm ${
+                            highlight ? "bg-amber-500/10" : "bg-black/10"
+                          }`}
+                        >
+                          <div className="min-w-0 truncate text-gray-200">
+                            {toTitleCaseFromSlug(r.family)}
+                          </div>
+                          <div className="text-right text-gray-300">{timesFaced}</div>
+                          <div className="text-right text-gray-300">{timesReviewed}</div>
+                          <div className="text-right text-gray-300">{pct(r.weakPct ?? 0)}</div>
+                          <div className="text-right text-gray-300">
+                            {pct(r.repetitivePct ?? 0)}
+                          </div>
+                          <div className="text-right text-gray-300">
+                            {pct(r.missedContextPct ?? 0)}
+                          </div>
                         </div>
-                        <div className="text-right text-gray-300">{r.count}</div>
-                        <div className="text-right text-gray-300">{pct(r.weakPct ?? 0)}</div>
-                        <div className="text-right text-gray-300">
-                          {pct(r.repetitivePct ?? 0)}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
           </div>
