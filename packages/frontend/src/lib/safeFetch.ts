@@ -2,14 +2,14 @@
 // Never allow server-component fetches to throw.
 // Always return fallback data to prevent dashboard crashes.
 
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/server";
 
 export async function safeFetchJSON<T>(
   url: string,
   fallback: T
 ): Promise<{ data: T; error: string | null }> {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     const res = await fetch(url, {
