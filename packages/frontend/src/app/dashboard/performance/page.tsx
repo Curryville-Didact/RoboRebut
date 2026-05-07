@@ -134,7 +134,7 @@ function DailyActivityChart({ points }: { points: { day: string; count: number }
           stroke="rgba(255,255,255,0.15)"
           strokeWidth={1}
         />
-        <polyline fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" d={d} />
+        <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" d={d} />
         {points.map((p, i) => (
           <circle key={`${p.day}-${i}`} cx={xAt(i)} cy={yAt(p.count)} r={4} fill="currentColor" />
         ))}
