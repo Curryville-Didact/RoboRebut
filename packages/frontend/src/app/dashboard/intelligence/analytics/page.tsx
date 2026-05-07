@@ -31,6 +31,7 @@ type AnalyticsResponse = {
   breakdown: {
     families: {
       family: string;
+      /** Reviewed events in this family (API field name: `count`) */
       count: number;
       avgRating: number | null;
       weakPct: number;
@@ -51,6 +52,110 @@ function Card({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <div className="text-xs text-gray-500">{label}</div>
       <div className="mt-1 text-xl font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
+function toTitleCaseFromSlug(input: string | null): string {
+  const t = (input ?? "").trim();
+  if (!t) return "—";
+  return t
+    .replace(/_/g, " ")
+    .split(/\s+/g)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function pct(v: number): string {
+  return `${Math.round(v * 100)}%`;
+}
+
+function formatCoveragePct(c: number): string {
+  if (!Number.isFinite(c)) return "—";
+  return `${c % 1 === 0 ? c.toFixed(0) : c.toFixed(1)}%`;
+}
+
+function formatAvgRating(r: number | null | undefined): string {
+  if (r == null || !Number.isFinite(r)) return "—";
+  return r.toFixed(1);
+}
+
+function aggregateMissedContextPct(payload: AnalyticsResponse): number {
+  const reviewed = payload.cards.totalReviewed ?? 0;
+  if (reviewed <= 0) return 0;
+  const tag = payload.series.outcomeTag?.find((t) => t.key === "missed_context");
+  const n = tag?.count ?? 0;
+  return n / reviewed;
+}
+
+function DailyActivityChart({ points }: { points: { day: string; count: number }[] }) {
+  if (points.length === 0) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-gray-500">
+        No trend data yet
+      </div>
+    );
+  }
+
+  const w = 800;
+  const h = 220;
+  const padL = 48;
+  const padR = 16;
+  const padT = 16;
+  const padB = 36;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const maxC = Math.max(1, ...points.map((p) => p.count));
+  const n = points.length;
+  const xAt = (i: number) => padL + (n <= 1 ? innerW / 2 : (i / Math.max(1, n - 1)) * innerW);
+  const yAt = (c: number) => padT + innerH - (c / maxC) * innerH;
+  const d = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i)} ${yAt(p.count)}`)
+    .join(" ");
+
+  const labelIdx =
+    n <= 10
+      ? points.map((_, i) => i)
+      : Array.from(new Set([0, Math.floor(n / 2), n - 1])).sort((a, b) => a - b);
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg
+        className="text-emerald-400/90"
+        viewBox={`0 0 ${w} ${h}`}
+        role="img"
+        aria-label="Daily rebuttal activity"
+      >
+        <rect width={w} height={h} fill="transparent" />
+        <line
+          x1={padL}
+          y1={padT + innerH}
+          x2={padL + innerW}
+          y2={padT + innerH}
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth={1}
+        />
+        <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" d={d} />
+        {points.map((p, i) => (
+          <circle key={`${p.day}-${i}`} cx={xAt(i)} cy={yAt(p.count)} r={4} fill="currentColor" />
+        ))}
+        {labelIdx.map((i) => {
+          const label = points[i]?.day ?? "";
+          return (
+            <text
+              key={`lbl-${i}-${label}`}
+              x={xAt(i)}
+              y={h - 10}
+              textAnchor="middle"
+              className="fill-gray-500"
+              style={{ fontSize: 11 }}
+            >
+              {label.length >= 10 ? label.slice(5) : label}
+            </text>
+          );
+        })}
+      </svg>
     </div>
   );
 }
@@ -112,7 +217,11 @@ export default function IntelligenceAnalyticsPage() {
             mostCommonRhetoricalType: "control_question",
           },
           series: {
-            daily: [],
+            daily: [
+              { day: "2026-05-01", count: 6 },
+              { day: "2026-05-02", count: 10 },
+              { day: "2026-05-03", count: 8 },
+            ],
             objectionFamily: [
               { key: "cash_flow", count: 34 },
               { key: "trust", count: 22 },
@@ -129,6 +238,7 @@ export default function IntelligenceAnalyticsPage() {
             outcomeTag: [
               { key: "strong", count: 19 },
               { key: "weak", count: 8 },
+              { key: "missed_context", count: 5 },
             ],
             topMerchantObjections: [
               { key: "The payment feels too heavy.", count: 9 },
@@ -137,8 +247,22 @@ export default function IntelligenceAnalyticsPage() {
           },
           breakdown: {
             families: [
-              { family: "cash_flow", count: 34, avgRating: 4.1, weakPct: 0.12, repetitivePct: 0.08, missedContextPct: 0.09 },
-              { family: "trust", count: 22, avgRating: 3.8, weakPct: 0.18, repetitivePct: 0.06, missedContextPct: 0.11 },
+              {
+                family: "cash_flow",
+                count: 34,
+                avgRating: 4.1,
+                weakPct: 0.12,
+                repetitivePct: 0.08,
+                missedContextPct: 0.09,
+              },
+              {
+                family: "trust",
+                count: 22,
+                avgRating: 3.8,
+                weakPct: 0.18,
+                repetitivePct: 0.06,
+                missedContextPct: 0.11,
+              },
             ],
           },
         });
@@ -176,6 +300,24 @@ export default function IntelligenceAnalyticsPage() {
 
   const noPerformanceData =
     data != null && data.cards.totalCaptured === 0 && !loading && !error;
+
+  const timesFacedByFamily = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const row of data?.series.objectionFamily ?? []) {
+      m.set(row.key, row.count);
+    }
+    return m;
+  }, [data]);
+
+  const topToneMode = useMemo(() => {
+    const first = data?.series.tone?.[0];
+    return first?.key ?? null;
+  }, [data]);
+
+  const missedContextAggregatePct = useMemo(() => {
+    if (!data) return 0;
+    return aggregateMissedContextPct(data);
+  }, [data]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -228,22 +370,36 @@ export default function IntelligenceAnalyticsPage() {
         />
       ) : data ? (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Card label="Total captured" value={String(data.cards.totalCaptured)} />
-            <Card label="Total reviewed" value={String(data.cards.totalReviewed)} />
-            <Card label="Review coverage" value={`${data.cards.coveragePct}%`} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <Card label="Rebuttals Generated" value={String(data.cards.totalCaptured ?? 0)} />
             <Card
-              label="Average rating"
-              value={data.cards.avgRating == null ? "—" : String(data.cards.avgRating)}
+              label="Most Common Objection"
+              value={toTitleCaseFromSlug(data.cards.mostCommonFamily)}
             />
+            <Card label="Top Tone Used" value={toTitleCaseFromSlug(topToneMode)} />
             <Card
-              label="Most common family"
-              value={data.cards.mostCommonFamily ?? "—"}
+              label="Review Coverage"
+              value={formatCoveragePct(data.cards.coveragePct ?? 0)}
             />
+            <Card label="Avg Rating" value={formatAvgRating(data.cards.avgRating)} />
             <Card
-              label="Most common rhetorical type"
-              value={data.cards.mostCommonRhetoricalType ?? "—"}
+              label="Missed Context %"
+              value={
+                (data.cards.totalReviewed ?? 0) > 0
+                  ? pct(missedContextAggregatePct)
+                  : "—"
+              }
             />
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="text-sm font-semibold text-white">Daily activity</div>
+            <p className="mt-1 text-xs text-gray-500">
+              Rebuttals captured per day in the selected window.
+            </p>
+            <div className="mt-4">
+              <DailyActivityChart points={data.series.daily ?? []} />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -269,20 +425,50 @@ export default function IntelligenceAnalyticsPage() {
           </div>
 
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="text-sm font-semibold">Top families (reviewed)</div>
-            <div className="mt-3 space-y-2">
-              {data.breakdown.families.slice(0, 12).map((f) => (
-                <div key={f.family} className="grid grid-cols-[1fr_90px_90px] gap-2 text-sm">
-                  <div className="truncate text-gray-200">{f.family}</div>
-                  <div className="text-right text-gray-400">
-                    {f.avgRating == null ? "—" : f.avgRating.toFixed(2)}
-                  </div>
-                  <div className="text-right text-gray-500">{f.count}</div>
+            <div className="text-sm font-semibold text-white">OBJECTION BREAKDOWN</div>
+            <div className="mt-3 overflow-x-auto overflow-hidden rounded-lg border border-white/10">
+              <div className="min-w-[720px]">
+                <div className="grid grid-cols-6 gap-3 bg-black/30 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <div>Objection Type</div>
+                  <div className="text-right">Times Faced</div>
+                  <div className="text-right">Reviewed</div>
+                  <div className="text-right">Weak %</div>
+                  <div className="text-right">Repetitive %</div>
+                  <div className="text-right">Missed Context %</div>
                 </div>
-              ))}
-              {data.breakdown.families.length === 0 ? (
-                <div className="text-sm text-gray-500">No reviewed data yet.</div>
-              ) : null}
+                <div className="divide-y divide-white/5">
+                  {data.breakdown.families.length === 0 ? (
+                    <div className="px-3 py-3 text-sm text-gray-500">No breakdown data yet.</div>
+                  ) : (
+                    data.breakdown.families.slice(0, 12).map((r) => {
+                      const highlight = (r.weakPct ?? 0) > 0.3;
+                      const timesFaced = timesFacedByFamily.get(r.family) ?? 0;
+                      const timesReviewed = r.count;
+                      return (
+                        <div
+                          key={r.family}
+                          className={`grid grid-cols-6 gap-3 px-3 py-2 text-sm ${
+                            highlight ? "bg-amber-500/10" : "bg-black/10"
+                          }`}
+                        >
+                          <div className="min-w-0 truncate text-gray-200">
+                            {toTitleCaseFromSlug(r.family)}
+                          </div>
+                          <div className="text-right text-gray-300">{timesFaced}</div>
+                          <div className="text-right text-gray-300">{timesReviewed}</div>
+                          <div className="text-right text-gray-300">{pct(r.weakPct ?? 0)}</div>
+                          <div className="text-right text-gray-300">
+                            {pct(r.repetitivePct ?? 0)}
+                          </div>
+                          <div className="text-right text-gray-300">
+                            {pct(r.missedContextPct ?? 0)}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </>
