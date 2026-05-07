@@ -9,45 +9,27 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
     const { data: { user }, error: authError } = await app.supabase.auth.getUser(token);
     if (authError || !user) return reply.status(401).send({ error: 'Unauthorized' });
 
-    // Rebuttals per broker
-    const { data: rebuttalsByBroker } = await app.supabase
-      .from('rebuttal_events')
-      .select('user_id, user_email')
-      .order('user_id');
+    // Broker stats via RPC (joins auth.users for email)
+    const { data: brokerRows, error: brokerError } = await app.supabase
+      .rpc('get_broker_analytics');
 
-    // Aggregate rebuttals per broker in JS
-    const brokerMap: Record<string, { email: string; rebuttals: number; conversations: Set<string>; ratings: number[]; }> = {};
-    for (const row of rebuttalsByBroker ?? []) {
-      if (!brokerMap[row.user_id]) {
-        brokerMap[row.user_id] = { email: row.user_email ?? row.user_id, rebuttals: 0, conversations: new Set(), ratings: [] };
-      }
-      brokerMap[row.user_id].rebuttals++;
+    if (brokerError) {
+      app.log.error(brokerError, 'get_broker_analytics RPC failed');
+      return reply.status(500).send({ error: 'Failed to load broker analytics' });
     }
 
-    // Conversation counts
-    const { data: convRows } = await app.supabase
-      .from('rebuttal_events')
-      .select('user_id, conversation_id');
-    for (const row of convRows ?? []) {
-      if (brokerMap[row.user_id]) brokerMap[row.user_id].conversations.add(row.conversation_id);
-    }
-
-    // Avg ratings
-    const { data: ratingRows } = await app.supabase
-      .from('rebuttal_events')
-      .select('user_id, rating')
-      .not('rating', 'is', null);
-    for (const row of ratingRows ?? []) {
-      if (brokerMap[row.user_id]) brokerMap[row.user_id].ratings.push(row.rating);
-    }
-
-    const brokers = Object.entries(brokerMap).map(([userId, b]) => ({
-      userId,
-      email: b.email,
-      rebuttals: b.rebuttals,
-      conversations: b.conversations.size,
-      avgRating: b.ratings.length ? +(b.ratings.reduce((a, c) => a + c, 0) / b.ratings.length).toFixed(2) : null,
-    })).sort((a, b) => b.rebuttals - a.rebuttals);
+    const brokers = (brokerRows ?? []).map((row: {
+      user_id: string;
+      email: string;
+      rebuttals: number;
+      conversations: number;
+    }) => ({
+      userId: row.user_id,
+      email: row.email,
+      rebuttals: Number(row.rebuttals),
+      conversations: Number(row.conversations),
+      avgRating: null,
+    }));
 
     // Top objections across all brokers
     const { data: objectionRows } = await app.supabase
