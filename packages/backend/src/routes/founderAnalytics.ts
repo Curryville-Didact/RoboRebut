@@ -1,62 +1,69 @@
-/**
- * Founder internal analytics — read-only pattern intelligence summary.
- *
- * Security:
- * - Requires normal auth (Bearer token via fastify.authenticate)
- * - Requires founder allowlist by email (FOUNDER_EMAILS or NEXT_PUBLIC_FOUNDER_EMAILS)
- */
-import type { FastifyInstance } from "fastify";
-import { sendApiError } from "../lib/apiErrors.js";
-import { buildAnalyticsIntelligenceSummary } from "../services/analyticsIntelligence.js";
+import { FastifyInstance } from 'fastify';
 
-function founderEmailAllowlist(): string[] {
-  const raw =
-    process.env.FOUNDER_EMAILS?.trim() ||
-    process.env.NEXT_PUBLIC_FOUNDER_EMAILS?.trim() ||
-    "";
-  if (raw) {
-    return raw
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-  }
-  return ["admin@getrebut.ai"];
-}
+export async function founderAnalyticsRoutes(app: FastifyInstance) {
+  app.get('/founder/analytics', async (request, reply) => {
+    const authHeader = request.headers.authorization;
+    if (!authHeader) return reply.status(401).send({ error: 'Unauthorized' });
 
-function isFounderEmail(email: string | null | undefined): boolean {
-  const e = (email ?? "").trim().toLowerCase();
-  if (!e) return false;
-  return founderEmailAllowlist().includes(e);
-}
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await app.supabase.auth.getUser(token);
+    if (authError || !user) return reply.status(401).send({ error: 'Unauthorized' });
 
-export async function founderAnalyticsRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get<{
-    Querystring: { limit?: string; conversationId?: string };
-  }>("/founder/analytics/pattern-intelligence", {
-    preHandler: [fastify.authenticate],
-    handler: async (request, reply) => {
-      const callerEmail = request.user.email ?? null;
-      if (!isFounderEmail(callerEmail)) {
-        return sendApiError(reply, {
-          status: 403,
-          code: "FORBIDDEN",
-          message: "Forbidden",
-        });
+    // Rebuttals per broker
+    const { data: rebuttalsByBroker } = await app.supabase
+      .from('rebuttal_events')
+      .select('user_id, user_email')
+      .order('user_id');
+
+    // Aggregate rebuttals per broker in JS
+    const brokerMap: Record<string, { email: string; rebuttals: number; conversations: Set<string>; ratings: number[]; }> = {};
+    for (const row of rebuttalsByBroker ?? []) {
+      if (!brokerMap[row.user_id]) {
+        brokerMap[row.user_id] = { email: row.user_email ?? row.user_id, rebuttals: 0, conversations: new Set(), ratings: [] };
       }
+      brokerMap[row.user_id].rebuttals++;
+    }
 
-      const limitRaw = typeof request.query.limit === "string" ? request.query.limit.trim() : "";
-      const limit = limitRaw ? Number(limitRaw) : undefined;
-      const conversationId =
-        typeof request.query.conversationId === "string"
-          ? request.query.conversationId.trim()
-          : null;
+    // Conversation counts
+    const { data: convRows } = await app.supabase
+      .from('rebuttal_events')
+      .select('user_id, conversation_id');
+    for (const row of convRows ?? []) {
+      if (brokerMap[row.user_id]) brokerMap[row.user_id].conversations.add(row.conversation_id);
+    }
 
-      const summary = await buildAnalyticsIntelligenceSummary(fastify.supabase, {
-        limit: typeof limit === "number" && Number.isFinite(limit) ? limit : undefined,
-        conversationId,
-      });
-      return reply.send(summary);
-    },
+    // Avg ratings
+    const { data: ratingRows } = await app.supabase
+      .from('rebuttal_events')
+      .select('user_id, rating')
+      .not('rating', 'is', null);
+    for (const row of ratingRows ?? []) {
+      if (brokerMap[row.user_id]) brokerMap[row.user_id].ratings.push(row.rating);
+    }
+
+    const brokers = Object.entries(brokerMap).map(([userId, b]) => ({
+      userId,
+      email: b.email,
+      rebuttals: b.rebuttals,
+      conversations: b.conversations.size,
+      avgRating: b.ratings.length ? +(b.ratings.reduce((a, c) => a + c, 0) / b.ratings.length).toFixed(2) : null,
+    })).sort((a, b) => b.rebuttals - a.rebuttals);
+
+    // Top objections across all brokers
+    const { data: objectionRows } = await app.supabase
+      .from('rebuttal_events')
+      .select('objection_type')
+      .not('objection_type', 'is', null);
+
+    const objectionMap: Record<string, number> = {};
+    for (const row of objectionRows ?? []) {
+      objectionMap[row.objection_type] = (objectionMap[row.objection_type] ?? 0) + 1;
+    }
+    const topObjections = Object.entries(objectionMap)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return reply.send({ brokers, topObjections });
   });
 }
-
