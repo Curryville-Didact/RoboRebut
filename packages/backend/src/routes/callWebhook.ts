@@ -8,6 +8,7 @@ import type { FastifyInstance } from "fastify";
 import { sendApiError } from "../lib/apiErrors.js";
 import { parseCrmPayload } from "../services/crmWebhookParser.js";
 import { transcribeCallAudio } from "../services/callTranscription.js";
+import { syncContactToCRMs } from "../services/crmSync.js";
 
 const VALID_SOURCES = [
   "generic_webhook",
@@ -187,6 +188,19 @@ export async function callWebhookRoutes(
 
     if (msgErr) {
       req.log.warn({ msgErr }, "callWebhook: failed to insert transcript message");
+    }
+
+    // CRM auto-sync should never block call saving.
+    try {
+      const { data: authUserData, error: authUserErr } =
+        await fastify.supabase.auth.admin.getUserById(userId);
+      const userEmail = authUserErr ? "" : authUserData.user?.email ?? "";
+      const userName = userEmail;
+      if (userEmail) {
+        await syncContactToCRMs(fastify.supabase, userId, userEmail, userName);
+      }
+    } catch (err) {
+      req.log.warn({ err }, "callWebhook: crm auto-sync failed (ignored)");
     }
 
     return reply.status(201).send({
