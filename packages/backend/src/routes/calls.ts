@@ -7,7 +7,10 @@ export async function callsRoutes(app: FastifyInstance) {
   // Accepts multipart audio upload, returns transcript + detected objections
   app.post(
     "/calls/transcribe",
-    { preHandler: [app.authenticate] },
+    {
+      preHandler: [app.authenticate],
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (request, reply) => {
       const userId = request.user.id;
 

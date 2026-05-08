@@ -122,6 +122,7 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
     };
   }>("/messages", {
     preHandler: [fastify.authenticate],
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
     handler: async (request, reply) => {
       const conversationId = request.body?.conversation_id?.trim();
       const content = request.body?.content?.trim();

@@ -379,7 +379,9 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
     },
   });
 
-  fastify.post('/billing/webhook', async (request, reply) => {
+  fastify.post('/billing/webhook', {
+    config: { rateLimit: false },
+  }, async (request, reply) => {
     const secret = process.env.POLAR_WEBHOOK_SECRET;
     if (!secret) {
       fastify.log.error('[webhook] POLAR_WEBHOOK_SECRET not set');

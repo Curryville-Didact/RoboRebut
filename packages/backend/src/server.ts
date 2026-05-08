@@ -11,8 +11,9 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
+import rateLimit from "@fastify/rate-limit";
 import cron from "node-cron";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import config from "./config.js";
 import prismaPlugin from "./plugins/prisma.js";
 import redisPlugin from "./plugins/redis.js";
@@ -81,7 +82,39 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(websocketPlugin);
   await app.register(multipart, { limits: { fileSize: 26_214_400 } });
 
-  app.get("/health", async () => ({ ok: true }));
+  await app.register(rateLimit, {
+    global: true,
+    max: 100,
+    timeWindow: "1 minute",
+    redis: app.redis,
+    hook: "preHandler",
+    keyGenerator: (request: FastifyRequest) => {
+      const userId = request.user?.id;
+      return userId ?? request.ip;
+    },
+    errorResponseBuilder: (_request, context) => ({
+      statusCode: 429,
+      error: "Too Many Requests",
+      message: `Rate limit exceeded. Try again in ${context.after}.`,
+      retryAfter: context.after,
+    }),
+    addHeaders: {
+      "x-ratelimit-limit": true,
+      "x-ratelimit-remaining": true,
+      "x-ratelimit-reset": true,
+      "retry-after": true,
+    },
+  });
+
+  // Rate limit overrides are set per-route via:
+  // config: { rateLimit: { max: N, timeWindow: 'X' } }
+  // Applied in the route file's options object.
+
+  app.get(
+    "/health",
+    { config: { rateLimit: false } },
+    async () => ({ ok: true })
+  );
 
   await app.register(rebuttalRoutes);
   await app.register(regenerateRoutes);

@@ -28,6 +28,7 @@ export async function rebuttalRoutes(fastify: FastifyInstance) {
     "/api/rebuttal",
     {
       preHandler: [fastify.authenticate],
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       handler: async (request, reply) => {
       const body = request.body;
 
