@@ -116,6 +116,8 @@ export default function ConversationDetailPage() {
   const [transcriptModalLoading, setTranscriptModalLoading] = useState(false);
   const [transcriptModalError, setTranscriptModalError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Mobile UX: controls are collapsible; default is collapsed (closed).
+  const [controlsOpenMobile, setControlsOpenMobile] = useState(false);
   /** Phase 5.3 — backend-backed free tier usage; null until loaded. */
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
@@ -835,144 +837,298 @@ export default function ConversationDetailPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
-          <div className="min-w-0 flex-1">
-            <DealContextPanel
-              conversationId={conversationId}
-              savedDealContext={conversation.deal_context}
-              getAccessToken={waitForSessionAccessToken}
-              structuredDealContextEnabled={structuredDealContextEnabled}
-              proUpgradeHref={getProCheckoutHref(returnTo)}
-              onDealContextSaved={(deal_context) =>
-                setConversation((c) => (c ? { ...c, deal_context } : c))
-              }
-            />
+        {/* Desktop controls (always expanded) */}
+        <div className="hidden md:block space-y-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+            <div className="min-w-0 flex-1">
+              <DealContextPanel
+                conversationId={conversationId}
+                savedDealContext={conversation.deal_context}
+                getAccessToken={waitForSessionAccessToken}
+                structuredDealContextEnabled={structuredDealContextEnabled}
+                proUpgradeHref={getProCheckoutHref(returnTo)}
+                onDealContextSaved={(deal_context) =>
+                  setConversation((c) => (c ? { ...c, deal_context } : c))
+                }
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <ClientContextPanel
+                conversationId={conversationId}
+                savedClientContext={conversation.client_context ?? null}
+                getAccessToken={waitForSessionAccessToken}
+                onClientContextSaved={(client_context) =>
+                  setConversation((c) => (c ? { ...c, client_context } : c))
+                }
+              />
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <ClientContextPanel
-              conversationId={conversationId}
-              savedClientContext={conversation.client_context ?? null}
-              getAccessToken={waitForSessionAccessToken}
-              onClientContextSaved={(client_context) =>
-                setConversation((c) => (c ? { ...c, client_context } : c))
-              }
-            />
-          </div>
-        </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-              Tone Mode
-            </p>
-            {usage?.entitlements?.advancedToneModes === true && (
-              <span className="text-xs text-emerald-400/80">Pro tones enabled</span>
-            )}
-          </div>
-          <ToneSwitcher
-            selectedTone={selectedTone}
-            onSelect={(tone) =>
-              setSelectedTone((current) => (current === tone ? "" : tone))
-            }
-            disabled={composerDisabled}
-            tones={toneOptions}
-            showLockedToneNudge={showToneUpgradeNudge && !isPro}
-            onLockedToneClick={handleLockedToneClick}
-            onDismissLockedToneNudge={dismissToneNudge}
-            onLockedToneCtaClick={() =>
-              trackEvent({
-                eventName: "upgrade_nudge_clicked",
-                triggerType: "tone",
-                planType,
-                conversationId,
-                priorityGeneration: usage?.entitlements?.priorityGeneration,
-                responseVariants: usage?.entitlements?.responseVariants ?? null,
-                surface: "ToneSwitcher",
-                ctaLabel: "Use Closer Mode",
-                ctaGroup: "tone",
-              })
-            }
-          />
-          <div className="flex flex-col gap-1.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-              Mode
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={composerDisabled}
-                className={[
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
-                  coachReplyMode === "precall"
-                    ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                    : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
-                ].join(" ")}
-                onClick={() => {
-                  const m: CoachReplyMode = "precall";
-                  setCoachReplyMode(m);
-                  if (typeof window !== "undefined") {
-                    window.sessionStorage.setItem(
-                      `roborebut:coachReplyMode:${conversationId}`,
-                      m
-                    );
-                  }
-                }}
-              >
-                Pre-Call Breakdown
-              </button>
-              <button
-                type="button"
-                disabled={composerDisabled}
-                className={[
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
-                  coachReplyMode === "live"
-                    ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                    : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
-                ].join(" ")}
-                onClick={() => {
-                  const m: CoachReplyMode = "live";
-                  setCoachReplyMode(m);
-                  if (typeof window !== "undefined") {
-                    window.sessionStorage.setItem(
-                      `roborebut:coachReplyMode:${conversationId}`,
-                      m
-                    );
-                  }
-                }}
-              >
-                Live Call
-              </button>
-              {isPro && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Tone Mode</p>
+              {usage?.entitlements?.advancedToneModes === true && (
+                <span className="text-xs text-emerald-400/80">Pro tones enabled</span>
+              )}
+            </div>
+            <ToneSwitcher
+              selectedTone={selectedTone}
+              onSelect={(tone) => setSelectedTone((current) => (current === tone ? "" : tone))}
+              disabled={composerDisabled}
+              tones={toneOptions}
+              showLockedToneNudge={showToneUpgradeNudge && !isPro}
+              onLockedToneClick={handleLockedToneClick}
+              onDismissLockedToneNudge={dismissToneNudge}
+              onLockedToneCtaClick={() =>
+                trackEvent({
+                  eventName: "upgrade_nudge_clicked",
+                  triggerType: "tone",
+                  planType,
+                  conversationId,
+                  priorityGeneration: usage?.entitlements?.priorityGeneration,
+                  responseVariants: usage?.entitlements?.responseVariants ?? null,
+                  surface: "ToneSwitcher",
+                  ctaLabel: "Use Closer Mode",
+                  ctaGroup: "tone",
+                })
+              }
+            />
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Mode</p>
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   disabled={composerDisabled}
                   className={[
                     "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
-                    showTranscript
+                    coachReplyMode === "precall"
                       ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
                       : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
                   ].join(" ")}
-                  onClick={() => setShowTranscript((s) => !s)}
+                  onClick={() => {
+                    const m: CoachReplyMode = "precall";
+                    setCoachReplyMode(m);
+                    if (typeof window !== "undefined") {
+                      window.sessionStorage.setItem(`roborebut:coachReplyMode:${conversationId}`, m);
+                    }
+                  }}
                 >
-                  Transcript 🎤
+                  Pre-Call Breakdown
                 </button>
-              )}
+                <button
+                  type="button"
+                  disabled={composerDisabled}
+                  className={[
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                    coachReplyMode === "live"
+                      ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                      : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                  ].join(" ")}
+                  onClick={() => {
+                    const m: CoachReplyMode = "live";
+                    setCoachReplyMode(m);
+                    if (typeof window !== "undefined") {
+                      window.sessionStorage.setItem(`roborebut:coachReplyMode:${conversationId}`, m);
+                    }
+                  }}
+                >
+                  Live Call
+                </button>
+                {isPro && (
+                  <button
+                    type="button"
+                    disabled={composerDisabled}
+                    className={[
+                      "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                      showTranscript
+                        ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                        : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                    ].join(" ")}
+                    onClick={() => setShowTranscript((s) => !s)}
+                  >
+                    Transcript 🎤
+                  </button>
+                )}
+              </div>
             </div>
+            {coachReplyMode === "precall" && (
+              <PreCallDepthToggle
+                depth={preCallDepth}
+                disabled={composerDisabled}
+                onChange={(d) => {
+                  setPreCallDepth(d);
+                  if (typeof window !== "undefined") {
+                    window.sessionStorage.setItem(`roborebut:preCallDepth:${conversationId}`, d);
+                  }
+                }}
+              />
+            )}
           </div>
-          {coachReplyMode === "precall" && (
-            <PreCallDepthToggle
-              depth={preCallDepth}
-              disabled={composerDisabled}
-              onChange={(d) => {
-                setPreCallDepth(d);
-                if (typeof window !== "undefined") {
-                  window.sessionStorage.setItem(
-                    `roborebut:preCallDepth:${conversationId}`,
-                    d
-                  );
-                }
-              }}
-            />
+        </div>
+
+        {/* Mobile controls (collapsible) */}
+        <div className="md:hidden">
+          {!controlsOpenMobile ? (
+            <button
+              type="button"
+              onClick={() => setControlsOpenMobile(true)}
+              className="w-full bg-white/5 border-t border-white/10 text-gray-400 text-sm py-2 px-4 flex items-center justify-between"
+            >
+              <span className="flex items-center gap-2">
+                <span aria-hidden>⚙</span>
+                <span>Controls</span>
+              </span>
+              <span aria-hidden className="text-xs text-gray-500">
+                ⌃
+              </span>
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setControlsOpenMobile(false)}
+                className="w-full text-left text-gray-400 text-sm py-2 px-1"
+              >
+                Hide Controls ⌃
+              </button>
+
+              <div className="flex flex-col gap-3">
+                <DealContextPanel
+                  conversationId={conversationId}
+                  savedDealContext={conversation.deal_context}
+                  getAccessToken={waitForSessionAccessToken}
+                  structuredDealContextEnabled={structuredDealContextEnabled}
+                  proUpgradeHref={getProCheckoutHref(returnTo)}
+                  onDealContextSaved={(deal_context) =>
+                    setConversation((c) => (c ? { ...c, deal_context } : c))
+                  }
+                />
+                <ClientContextPanel
+                  conversationId={conversationId}
+                  savedClientContext={conversation.client_context ?? null}
+                  getAccessToken={waitForSessionAccessToken}
+                  onClientContextSaved={(client_context) =>
+                    setConversation((c) => (c ? { ...c, client_context } : c))
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Tone Mode
+                  </p>
+                  {usage?.entitlements?.advancedToneModes === true && (
+                    <span className="text-xs text-emerald-400/80">Pro tones enabled</span>
+                  )}
+                </div>
+                <ToneSwitcher
+                  selectedTone={selectedTone}
+                  onSelect={(tone) =>
+                    setSelectedTone((current) => (current === tone ? "" : tone))
+                  }
+                  disabled={composerDisabled}
+                  tones={toneOptions}
+                  showLockedToneNudge={showToneUpgradeNudge && !isPro}
+                  onLockedToneClick={handleLockedToneClick}
+                  onDismissLockedToneNudge={dismissToneNudge}
+                  onLockedToneCtaClick={() =>
+                    trackEvent({
+                      eventName: "upgrade_nudge_clicked",
+                      triggerType: "tone",
+                      planType,
+                      conversationId,
+                      priorityGeneration: usage?.entitlements?.priorityGeneration,
+                      responseVariants: usage?.entitlements?.responseVariants ?? null,
+                      surface: "ToneSwitcher",
+                      ctaLabel: "Use Closer Mode",
+                      ctaGroup: "tone",
+                    })
+                  }
+                />
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Mode
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={composerDisabled}
+                      className={[
+                        "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                        coachReplyMode === "precall"
+                          ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                          : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                      ].join(" ")}
+                      onClick={() => {
+                        const m: CoachReplyMode = "precall";
+                        setCoachReplyMode(m);
+                        if (typeof window !== "undefined") {
+                          window.sessionStorage.setItem(
+                            `roborebut:coachReplyMode:${conversationId}`,
+                            m
+                          );
+                        }
+                      }}
+                    >
+                      Pre-Call Breakdown
+                    </button>
+                    <button
+                      type="button"
+                      disabled={composerDisabled}
+                      className={[
+                        "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                        coachReplyMode === "live"
+                          ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                          : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                      ].join(" ")}
+                      onClick={() => {
+                        const m: CoachReplyMode = "live";
+                        setCoachReplyMode(m);
+                        if (typeof window !== "undefined") {
+                          window.sessionStorage.setItem(
+                            `roborebut:coachReplyMode:${conversationId}`,
+                            m
+                          );
+                        }
+                      }}
+                    >
+                      Live Call
+                    </button>
+                    {isPro && (
+                      <button
+                        type="button"
+                        disabled={composerDisabled}
+                        className={[
+                          "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                          showTranscript
+                            ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                            : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                        ].join(" ")}
+                        onClick={() => setShowTranscript((s) => !s)}
+                      >
+                        Transcript 🎤
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {coachReplyMode === "precall" && (
+                  <PreCallDepthToggle
+                    depth={preCallDepth}
+                    disabled={composerDisabled}
+                    onChange={(d) => {
+                      setPreCallDepth(d);
+                      if (typeof window !== "undefined") {
+                        window.sessionStorage.setItem(
+                          `roborebut:preCallDepth:${conversationId}`,
+                          d
+                        );
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            </div>
           )}
         </div>
 
