@@ -38,7 +38,7 @@ export function ToneSwitcher({
   }
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-nowrap md:flex-wrap gap-2 overflow-x-auto pb-1 md:pb-0">
         {tones.map((tone) => {
           const value = tone.value;
           const isSelected = selectedTone === value;
@@ -55,7 +55,7 @@ export function ToneSwitcher({
                 onSelect(value);
               }}
               disabled={disabled}
-              className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+              className={`whitespace-nowrap shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition ${
                 isSelected
                   ? "border-white bg-white text-black"
                   : tone.locked
