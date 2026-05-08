@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { sendApiError } from "../lib/apiErrors.js";
 
 type SyncContactBody = {
@@ -14,41 +14,6 @@ type SyncDealBody = {
   amount?: number;
   stage?: string;
 };
-
-function getBearerToken(request: FastifyRequest): string | null {
-  const authHeader = request.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const token = authHeader.slice(7).trim();
-  return token.length ? token : null;
-}
-
-async function requireSupabaseUser(
-  app: FastifyInstance,
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  const token = getBearerToken(request);
-  if (!token) {
-    sendApiError(reply, {
-      status: 401,
-      code: "UNAUTHORIZED",
-      message: "Missing or invalid Authorization header",
-    });
-    return null;
-  }
-
-  const { data, error } = await app.supabase.auth.getUser(token);
-  if (error || !data.user) {
-    sendApiError(reply, {
-      status: 401,
-      code: "UNAUTHORIZED",
-      message: "Invalid or expired token",
-    });
-    return null;
-  }
-
-  return data.user;
-}
 
 function getHubSpotAuthHeader(): string | null {
   const token = process.env.HUBSPOT_API_KEY?.trim();
@@ -68,10 +33,9 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
   // POST /api/crm/hubspot/sync-contact
   app.post<{ Body: SyncContactBody }>(
     "/crm/hubspot/sync-contact",
-    async (request, reply) => {
-      const user = await requireSupabaseUser(app, request, reply);
-      if (!user) return;
-
+    {
+      preHandler: [app.authenticate],
+      handler: async (request, reply) => {
       const auth = getHubSpotAuthHeader();
       if (!auth) {
         return sendApiError(reply, {
@@ -135,7 +99,7 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
       const data = await readHubSpotJsonSafe(hubspotRes);
       if (!hubspotRes.ok) {
         app.log.warn(
-          { status: hubspotRes.status, data, userId: user.id },
+          { status: hubspotRes.status, data, userId: request.user.id },
           "[hubspot] sync-contact failed"
         );
         return sendApiError(reply, {
@@ -147,16 +111,16 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
       }
 
       return reply.send({ ok: true, hubspot: data });
+      },
     }
   );
 
   // POST /api/crm/hubspot/sync-deal
   app.post<{ Body: SyncDealBody }>(
     "/crm/hubspot/sync-deal",
-    async (request, reply) => {
-      const user = await requireSupabaseUser(app, request, reply);
-      if (!user) return;
-
+    {
+      preHandler: [app.authenticate],
+      handler: async (request, reply) => {
       const auth = getHubSpotAuthHeader();
       if (!auth) {
         return sendApiError(reply, {
@@ -207,7 +171,7 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
       const dealData = await readHubSpotJsonSafe(createDealRes);
       if (!createDealRes.ok) {
         app.log.warn(
-          { status: createDealRes.status, dealData, userId: user.id },
+          { status: createDealRes.status, dealData, userId: request.user.id },
           "[hubspot] sync-deal create failed"
         );
         return sendApiError(reply, {
@@ -245,7 +209,7 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
       const assocData = await readHubSpotJsonSafe(assocRes);
       if (!assocRes.ok) {
         app.log.warn(
-          { status: assocRes.status, assocData, userId: user.id, dealId, contactId },
+          { status: assocRes.status, assocData, userId: request.user.id, dealId, contactId },
           "[hubspot] sync-deal association failed"
         );
         return sendApiError(reply, {
@@ -257,16 +221,16 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
       }
 
       return reply.send({ ok: true, deal: dealData, association: assocData });
+      },
     }
   );
 
   // GET /api/crm/hubspot/contact/:email
   app.get<{ Params: { email: string } }>(
     "/crm/hubspot/contact/:email",
-    async (request, reply) => {
-      const user = await requireSupabaseUser(app, request, reply);
-      if (!user) return;
-
+    {
+      preHandler: [app.authenticate],
+      handler: async (request, reply) => {
       const auth = getHubSpotAuthHeader();
       if (!auth) {
         return sendApiError(reply, {
@@ -311,7 +275,7 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
       const searchData = await readHubSpotJsonSafe(searchRes);
       if (!searchRes.ok) {
         app.log.warn(
-          { status: searchRes.status, searchData, userId: user.id },
+          { status: searchRes.status, searchData, userId: request.user.id },
           "[hubspot] contact search failed"
         );
         return sendApiError(reply, {
@@ -323,6 +287,7 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
       }
 
       return reply.send({ ok: true, hubspot: searchData });
+      },
     }
   );
 }
