@@ -369,6 +369,15 @@ export default function IntegrationsSettingsPage() {
   const [webhookUserId, setWebhookUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>("");
 
+  const [inboundWebhookInfo, setInboundWebhookInfo] = useState<{
+    webhookUrl: string;
+    hasSecret: boolean;
+  } | null>(null);
+  const [inboundWebhookLoading, setInboundWebhookLoading] = useState(true);
+  const [inboundWebhookError, setInboundWebhookError] = useState<string | null>(null);
+  const [revealedInboundSecret, setRevealedInboundSecret] = useState<string | null>(null);
+  const [rotateInboundBusy, setRotateInboundBusy] = useState(false);
+
   const BACKEND_URL =
     process.env.NEXT_PUBLIC_API_URL ??
     (typeof window !== "undefined" ? window.location.origin : "");
@@ -409,6 +418,60 @@ export default function IntegrationsSettingsPage() {
         setUserEmail(data.user?.email ?? "");
       });
   }, [load]);
+
+  const loadInboundWebhookSecret = useCallback(async () => {
+    setInboundWebhookLoading(true);
+    setInboundWebhookError(null);
+    const { data, error } = await authedJsonFetch<{
+      webhookUrl: string;
+      hasSecret: boolean;
+    }>(`${backendBaseUrl()}/api/crm/webhook-secret`, { method: "GET" });
+    if (error) {
+      setInboundWebhookError(error);
+      setInboundWebhookInfo(null);
+    } else if (data) {
+      setInboundWebhookInfo({
+        webhookUrl: data.webhookUrl,
+        hasSecret: data.hasSecret,
+      });
+    }
+    setInboundWebhookLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadInboundWebhookSecret();
+  }, [loadInboundWebhookSecret]);
+
+  useEffect(() => {
+    if (!revealedInboundSecret) return;
+    const t = setTimeout(() => setRevealedInboundSecret(null), 60_000);
+    return () => clearTimeout(t);
+  }, [revealedInboundSecret]);
+
+  async function rotateInboundWebhookSecret() {
+    if (
+      !window.confirm(
+        "Rotating your secret will break existing CRM webhooks until you update them. Continue?"
+      )
+    ) {
+      return;
+    }
+    setRotateInboundBusy(true);
+    setInboundWebhookError(null);
+    const { data, error } = await authedJsonFetch<{ secret: string; rotatedAt: string }>(
+      `${backendBaseUrl()}/api/crm/webhook-secret/rotate`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
+    setRotateInboundBusy(false);
+    if (error) {
+      setInboundWebhookError(error);
+      return;
+    }
+    if (data?.secret) {
+      setRevealedInboundSecret(data.secret);
+      await loadInboundWebhookSecret();
+    }
+  }
 
   const create = useCallback(async () => {
     if (creating) return;
@@ -542,6 +605,85 @@ export default function IntegrationsSettingsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {/* ── Signed inbound webhook (CRM POST) ── */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Inbound Webhook</div>
+          {inboundWebhookLoading ? (
+            <span className="text-xs text-gray-500">Loading…</span>
+          ) : inboundWebhookInfo ? (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                inboundWebhookInfo.hasSecret
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : "bg-red-500/15 text-red-300"
+              }`}
+            >
+              {inboundWebhookInfo.hasSecret ? "Configured" : "Not configured"}
+            </span>
+          ) : null}
+        </div>
+        {inboundWebhookError ? (
+          <div className="text-xs text-red-300/90">{inboundWebhookError}</div>
+        ) : null}
+        {inboundWebhookLoading ? (
+          <div className="text-xs text-gray-500">Loading webhook URL…</div>
+        ) : inboundWebhookInfo ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                readOnly
+                value={inboundWebhookInfo.webhookUrl}
+                className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-xs text-gray-200 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  void navigator.clipboard.writeText(inboundWebhookInfo.webhookUrl)
+                }
+                className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-gray-300 hover:bg-white/[0.08]"
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                disabled={rotateInboundBusy}
+                onClick={() => void rotateInboundWebhookSecret()}
+                className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:opacity-60"
+              >
+                {rotateInboundBusy ? "Rotating…" : "Rotate Secret"}
+              </button>
+            </div>
+            {revealedInboundSecret ? (
+              <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-3 space-y-2">
+                <p className="text-xs font-medium text-emerald-100">
+                  Save this secret now — it will not be shown again.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    readOnly
+                    value={revealedInboundSecret}
+                    className="min-w-0 flex-1 rounded-md border border-emerald-500/25 bg-black/30 px-2 py-2 font-mono text-[11px] text-emerald-50 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(revealedInboundSecret)}
+                    className="rounded-md border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-100 hover:bg-emerald-500/25"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <p className="text-xs text-gray-500">
+              Send this URL as the destination in your CRM. Include the header{" "}
+              <span className="font-mono text-gray-400">x-webhook-signature</span> with your
+              HMAC-SHA256 signature of the raw JSON body using your secret.
+            </p>
+          </div>
+        ) : null}
+      </div>
+
       {/* ── Inbound webhook URLs ── */}
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
         <div className="text-sm font-semibold">Inbound Call Webhooks</div>

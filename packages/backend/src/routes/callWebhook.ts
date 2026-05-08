@@ -9,6 +9,7 @@ import { sendApiError } from "../lib/apiErrors.js";
 import { parseCrmPayload } from "../services/crmWebhookParser.js";
 import { transcribeCallAudio } from "../services/callTranscription.js";
 import { syncContactToCRMs } from "../services/crmSync.js";
+import { verifyWebhookSignature } from "../services/webhookSigning.js";
 
 const VALID_SOURCES = [
   "generic_webhook",
@@ -49,22 +50,42 @@ export async function callWebhookRoutes(
     Querystring: { userId?: string };
     Body: Record<string, unknown>;
   }>("/calls/webhook/:source", async (req, reply) => {
+    const userIdRaw = req.query.userId as string | undefined;
+    if (!userIdRaw?.trim()) {
+      return reply.code(400).send({ error: "Missing userId" });
+    }
+    const userId = userIdRaw.trim();
+
+    const profile = await fastify.prisma.profile.findUnique({
+      where: { id: userId },
+      select: { webhookSecret: true },
+    });
+    if (!profile?.webhookSecret?.trim()) {
+      return reply.code(403).send({
+        error: "Webhook not configured. Rotate your secret in settings.",
+      });
+    }
+
+    const sigHdr =
+      req.headers["x-webhook-signature"] ?? req.headers["x-hub-signature-256"] ?? "";
+    const signature = Array.isArray(sigHdr) ? sigHdr[0] ?? "" : String(sigHdr);
+    if (!signature.trim()) {
+      return reply.code(401).send({ error: "Missing x-webhook-signature header" });
+    }
+
+    const rawBody = JSON.stringify(req.body ?? {});
+    const valid = verifyWebhookSignature(profile.webhookSecret, rawBody, signature);
+    if (!valid) {
+      return reply.code(401).send({ error: "Invalid webhook signature" });
+    }
+
     const source = req.params.source;
-    const userId = req.query.userId?.trim();
 
     if (!fastify.supabase) {
       return sendApiError(reply, {
         status: 503,
         code: "INTERNAL_ERROR",
         message: "Database not configured",
-      });
-    }
-
-    if (!userId) {
-      return sendApiError(reply, {
-        status: 400,
-        code: "INVALID_REQUEST",
-        message: "userId query param is required",
       });
     }
 

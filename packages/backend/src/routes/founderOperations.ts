@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { sendApiError } from "../lib/apiErrors.js";
+import { requireRole } from "../plugins/rbac.js";
 
 type OperationsSnapshotResponse = {
   totalUsers: number | null;
@@ -116,7 +117,7 @@ export async function founderOperationsRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
   fastify.get("/founder/operations-snapshot", {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireRole("FOUNDER", "ADMIN")],
     handler: async (request, reply) => {
       const callerEmail = request.user.email ?? null;
       if (!isFounderEmail(callerEmail)) {

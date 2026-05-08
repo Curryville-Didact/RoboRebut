@@ -12,6 +12,7 @@
 
 import type { FastifyInstance } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { requireRole } from "../plugins/rbac.js";
 import { rebuildOfflineIntelligenceForUser } from "../services/intelligence/offlineIntelligence.js";
 import { buildLatestInsightsForUser } from "../services/intelligence/intelligenceSummary.js";
 import { sendApiError } from "../lib/apiErrors.js";
@@ -32,7 +33,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
   fastify.post<{
     Body: { window_days?: number };
   }>("/admin/intelligence/rebuild", {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireRole("FOUNDER", "ADMIN")],
     handler: async (request, reply) => {
       const userId = request.user.id;
       if (!(await isAllowedUser(fastify.supabase, userId))) {
@@ -57,7 +58,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
   });
 
   fastify.get("/admin/intelligence/summary", {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireRole("FOUNDER", "ADMIN")],
     handler: async (request, reply) => {
       const userId = request.user.id;
       if (!(await isAllowedUser(fastify.supabase, userId))) {
@@ -154,7 +155,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
   });
 
   fastify.get("/admin/intelligence/insights", {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireRole("FOUNDER", "ADMIN")],
     handler: async (request, reply) => {
       const userId = request.user.id;
       if (!(await isAllowedUser(fastify.supabase, userId))) {
@@ -176,7 +177,7 @@ export async function adminIntelligenceRoutes(fastify: FastifyInstance): Promise
   fastify.get<{
     Querystring: { run_id?: string; limit?: string };
   }>("/admin/intelligence/snapshots", {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireRole("FOUNDER", "ADMIN")],
     handler: async (request, reply) => {
       const userId = request.user.id;
       if (!(await isAllowedUser(fastify.supabase, userId))) {

@@ -10,6 +10,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { sendApiError } from "../lib/apiErrors.js";
+import { requireRole } from "../plugins/rbac.js";
 import { getPlanEntitlements } from "../services/planEntitlements.js";
 import { findPolarCustomerIdByEmail } from "../services/polarEntitlementSync.js";
 
@@ -138,7 +139,7 @@ export async function founderSupportRoutes(fastify: FastifyInstance): Promise<vo
   fastify.get<{
     Querystring: { email?: string; userId?: string };
   }>("/founder/support/account", {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, requireRole("FOUNDER", "ADMIN")],
     handler: async (request, reply) => {
       const callerEmail = request.user.email ?? null;
       if (!isFounderEmail(callerEmail)) {

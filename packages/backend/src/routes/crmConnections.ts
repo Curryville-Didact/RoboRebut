@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { sendApiError } from "../lib/apiErrors.js";
+import { generateWebhookSecret } from "../services/webhookSigning.js";
 
 type CrmType = "hubspot" | "gohighlevel" | "salesforce" | "zoho" | "velocify";
 
@@ -105,6 +106,39 @@ export default async function crmConnections(app: FastifyInstance): Promise<void
       }
 
       return reply.send({ ok: true });
+    },
+  });
+
+  // POST /api/crm/webhook-secret/rotate
+  app.post("/crm/webhook-secret/rotate", {
+    preHandler: [app.authenticate],
+    handler: async (request, reply) => {
+      const userId = request.user.id;
+      const secret = generateWebhookSecret();
+      await app.prisma.profile.upsert({
+        where: { id: userId },
+        create: { id: userId, webhookSecret: secret },
+        update: { webhookSecret: secret },
+      });
+      return reply.send({ secret, rotatedAt: new Date().toISOString() });
+    },
+  });
+
+  // GET /api/crm/webhook-secret
+  app.get("/crm/webhook-secret", {
+    preHandler: [app.authenticate],
+    handler: async (request, reply) => {
+      const userId = request.user.id;
+      const profile = await app.prisma.profile.findUnique({
+        where: { id: userId },
+        select: { webhookSecret: true },
+      });
+      const apiBase = process.env.API_URL?.trim().replace(/\/$/, "") ?? "";
+      const webhookUrl = `${apiBase}/api/calls/webhook/:source?userId=${userId}`;
+      return reply.send({
+        webhookUrl,
+        hasSecret: Boolean(profile?.webhookSecret?.trim()),
+      });
     },
   });
 }
