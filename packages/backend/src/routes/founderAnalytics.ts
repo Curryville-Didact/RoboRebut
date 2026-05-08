@@ -216,8 +216,8 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
         };
 
         return reply.send({ ...summary, phrases });
-      } catch (e) {
-        app.log.error(e, 'founder pattern-intelligence unexpected failure');
+      } catch (err) {
+        app.log.error(err, 'pattern-intelligence route failed');
         return reply.status(500).send({ error: 'Failed to load pattern intelligence' });
       }
     }
