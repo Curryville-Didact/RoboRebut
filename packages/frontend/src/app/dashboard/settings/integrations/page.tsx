@@ -72,7 +72,7 @@ const CRM_OPTIONS: CrmOption[] = [
   {
     crm_type: "gohighlevel",
     name: "GoHighLevel",
-    logoUrl: "https://cdn.worldvectorlogo.com/logos/gohighlevel.svg",
+    logoUrl: "https://images.leadconnectorhq.com/image/f_webp,q_100/media/images/ghl_logo.png",
   },
   {
     crm_type: "salesforce",
