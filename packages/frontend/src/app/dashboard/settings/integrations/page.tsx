@@ -253,15 +253,11 @@ function CrmConnectionsPanel() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                   {crm.crm_type === "velocify" ? (
-                    <div className="w-8 h-8 rounded bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
-                      V
-                    </div>
+                    <div className="w-8 h-8 rounded bg-purple-600 flex items-center justify-center text-white text-sm font-bold">V</div>
+                  ) : crm.crm_type === "gohighlevel" ? (
+                    <div className="w-8 h-8 rounded flex items-center justify-center text-white font-bold" style={{ fontSize: '9px', letterSpacing: '-0.5px', backgroundColor: '#002147' }}>GHL</div>
                   ) : (
-                    <img
-                      src={crm.logoUrl}
-                      alt={`${crm.name} logo`}
-                      className="w-8 h-8 object-contain"
-                    />
+                    <img src={crm.logoUrl} alt={`${crm.name} logo`} className="w-8 h-8 object-contain" />
                   )}
                   <div className="space-y-1">
                     <div className="text-sm text-gray-200">{crm.name}</div>
