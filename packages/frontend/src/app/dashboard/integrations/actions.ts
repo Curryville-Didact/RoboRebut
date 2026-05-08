@@ -1,7 +1,7 @@
 "use server";
 
 import { API_URL } from "@/lib/env";
-import { safeFetch } from "@/lib/safeFetch";
+import { createClient } from "@/lib/supabase/server";
 
 function trimSlash(s: string): string {
   return s.replace(/\/$/, "");
@@ -22,14 +22,54 @@ export async function syncHubSpotContactAction(input: {
   name: string;
 }): Promise<SyncHubSpotContactResult> {
   const url = `${publicBackendUrl()}/api/crm/hubspot/sync-contact`;
-  type Resp = { ok?: boolean };
-  const fallback: Resp = {};
-  const { data, error } = await safeFetch<Resp>(
-    url,
-    { method: "POST", body: JSON.stringify(input) },
-    fallback
-  );
-  if (error) return { ok: false, error };
-  if (data?.ok !== true) return { ok: false, error: "Sync failed" };
+
+  const supabase = await createClient();
+  let {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    const { data } = await supabase.auth.refreshSession();
+    session = data.session;
+  }
+
+  if (!session?.access_token) {
+    return { ok: false, error: "Not authenticated" };
+  }
+
+  const token = session.access_token;
+
+  let data: unknown = null;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    });
+    data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg =
+        data && typeof data === "object" && data !== null
+          ? (data as any)?.error?.message ??
+            (data as any)?.error ??
+            (data as any)?.message
+          : null;
+      return { ok: false, error: typeof msg === "string" && msg ? msg : `Request failed: ${res.status}` };
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Sync failed",
+    };
+  }
+
+  if (!data || typeof data !== "object" || (data as any)?.ok !== true) {
+    return { ok: false, error: "Sync failed" };
+  }
+
   return { ok: true };
 }
