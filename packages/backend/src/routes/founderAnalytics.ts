@@ -48,4 +48,178 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
 
     return reply.send({ brokers, topObjections });
   });
+
+  app.get(
+    '/founder/analytics/pattern-intelligence',
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const q = (request.query ?? {}) as { limit?: unknown; conversationId?: unknown };
+      const limitRaw = typeof q.limit === 'string' ? Number(q.limit) : typeof q.limit === 'number' ? q.limit : null;
+      const limit =
+        typeof limitRaw === 'number' && Number.isFinite(limitRaw) && limitRaw > 0
+          ? Math.min(Math.floor(limitRaw), 2500)
+          : 250;
+      const conversationId =
+        typeof q.conversationId === 'string' && q.conversationId.trim().length > 0
+          ? q.conversationId.trim()
+          : null;
+
+      type RebuttalEventRow = {
+        id: string;
+        conversation_id: string | null;
+        objection_type: string | null;
+        pattern_key: string | null;
+        strategy_tag: string | null;
+        confidence_score: number | null;
+        was_saved: boolean | null;
+        decision_variant: string | null;
+        created_at: string;
+      };
+
+      try {
+        let query = app.supabase
+          .from('rebuttal_events')
+          .select(
+            'id, conversation_id, objection_type, pattern_key, strategy_tag, confidence_score, was_saved, decision_variant, created_at'
+          )
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (conversationId) {
+          query = query.eq('conversation_id', conversationId);
+        }
+
+        const { data: rows, error } = await query;
+        if (error) {
+          app.log.error(error, 'founder pattern-intelligence query failed');
+          return reply.status(500).send({ error: 'Failed to load pattern intelligence' });
+        }
+
+        const intelRows = (Array.isArray(rows) ? (rows as RebuttalEventRow[]) : []) ?? [];
+
+        // Phrase patterns (best-effort; never throw if table missing)
+        let phrases: Array<{
+          phrase: string;
+          deal_type: string | null;
+          vertical: string | null;
+          occurrences: number;
+          conversation_count: number;
+        }> = [];
+        try {
+          const { data: phraseRows, error: phraseError } = await app.supabase
+            .from('phrase_patterns')
+            .select('phrase, deal_type, vertical, occurrences, conversation_count')
+            .order('occurrences', { ascending: false })
+            .limit(100);
+          if (!phraseError && Array.isArray(phraseRows)) {
+            phrases = phraseRows as typeof phrases;
+          }
+        } catch {
+          phrases = [];
+        }
+
+        const byPatternKey: Record<string, number> = {};
+        const byStrategyTag: Record<string, number> = {};
+        const byVariant: Record<string, number> = {};
+        const byObjectionType: Record<string, number> = {};
+
+        let singleVariantCount = 0;
+        let savedCount = 0;
+        let missingPatternKeyCount = 0;
+        let nullConfidenceCount = 0;
+        let confidenceSum = 0;
+        let confidenceCount = 0;
+
+        for (const r of intelRows) {
+          const patternKey = r.pattern_key?.trim() ? String(r.pattern_key) : null;
+          const strategyTag = r.strategy_tag?.trim() ? String(r.strategy_tag) : null;
+          const variant = r.decision_variant?.trim() ? String(r.decision_variant) : null;
+          const objectionType = r.objection_type?.trim() ? String(r.objection_type) : null;
+
+          if (!patternKey) missingPatternKeyCount += 1;
+          if (patternKey) byPatternKey[patternKey] = (byPatternKey[patternKey] ?? 0) + 1;
+          if (strategyTag) byStrategyTag[strategyTag] = (byStrategyTag[strategyTag] ?? 0) + 1;
+          if (variant) byVariant[variant] = (byVariant[variant] ?? 0) + 1;
+          if (objectionType) byObjectionType[objectionType] = (byObjectionType[objectionType] ?? 0) + 1;
+
+          if (variant === 'single') singleVariantCount += 1;
+          if (r.was_saved === true) savedCount += 1;
+
+          if (r.confidence_score == null) {
+            nullConfidenceCount += 1;
+          } else if (typeof r.confidence_score === 'number' && Number.isFinite(r.confidence_score)) {
+            confidenceSum += r.confidence_score;
+            confidenceCount += 1;
+          }
+        }
+
+        const topPatternKeys = Object.entries(byPatternKey)
+          .map(([patternKey, count]) => ({ patternKey, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        const topStrategyTags = Object.entries(byStrategyTag)
+          .map(([strategyTag, count]) => ({ strategyTag, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        const branches = Object.entries(byObjectionType)
+          .map(([objectionType, total]) => ({
+            objectionType,
+            total,
+            avgUniquePatternKeyCount: null,
+            singleCandidateRate: null,
+            avgScoreGap: null,
+            saveRate: null,
+          }))
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 5);
+
+        const total = intelRows.length;
+        const singleCandidateRate = total > 0 ? singleVariantCount / total : null;
+        const saveRate = total > 0 ? savedCount / total : null;
+        const missingPatternKeyRate = total > 0 ? missingPatternKeyCount / total : 0;
+        const avgConfidence = confidenceCount > 0 ? confidenceSum / confidenceCount : null;
+
+        const summary = {
+          window: {
+            limit,
+            conversationId,
+            intelRows: total,
+          },
+          selection: {
+            topPatternKeys,
+            topStrategyTags,
+            singleCandidateRate,
+          },
+          antiRepeat: {
+            appliedRate: null,
+            byReason: {},
+          },
+          dvl: {
+            appliedRate: null,
+            variantUsage: byVariant,
+          },
+          confidence: { avg: avgConfidence },
+          saves: {
+            saveRate,
+            savedCount,
+          },
+          health: {
+            missingDecisionMetaRate: 0,
+            missingPatternKeyRate,
+            fallbackMessageCount: null,
+            unknownObjectionTypeCount: 0,
+            nullConfidenceCount,
+          },
+          branches,
+        };
+
+        return reply.send({ ...summary, phrases });
+      } catch (e) {
+        app.log.error(e, 'founder pattern-intelligence unexpected failure');
+        return reply.status(500).send({ error: 'Failed to load pattern intelligence' });
+      }
+    }
+  );
 }
