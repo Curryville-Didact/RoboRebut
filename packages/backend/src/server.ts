@@ -40,6 +40,7 @@ import { workspaceRoutes } from "./routes/workspaces.js";
 import { phrasePatternsRoutes } from "./routes/phrasePatternsRoutes.js";
 import { transcriptsRoutes } from "./routes/transcripts.js";
 import hubspot from "./routes/hubspot.js";
+import crmConnections from "./routes/crmConnections.js";
 import { runPhrasePatternAgent } from "./services/phrasePatternAgent.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
@@ -103,6 +104,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(transcriptsRoutes, { prefix: "/api" });
   await app.register(phrasePatternsRoutes, { prefix: "/api" });
   await app.register(hubspot, { prefix: "/api" });
+  await app.register(crmConnections, { prefix: "/api" });
 
   app.get(
     "/api/me",
