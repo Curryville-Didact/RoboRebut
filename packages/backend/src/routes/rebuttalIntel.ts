@@ -15,7 +15,8 @@ import {
   asStringArray,
   requireOneOf,
 } from "../lib/validation.js";
-import { dispatchOutboundIntegrationEvent } from "../services/integrations/outboundDispatcher.js";
+import { outboundWebhookQueue } from "../lib/queues.js";
+import type { OutboundWebhookJobData } from "../workers/outboundWebhookWorker.js";
 
 type RhetoricalType = "diagnostic" | "reframe" | "threshold" | "unknown";
 
@@ -175,8 +176,7 @@ export async function rebuttalIntelRoutes(fastify: FastifyInstance): Promise<voi
       request.log.info({ userId, route: "/rebuttal-events", ms: Date.now() - t0 }, "capture_ok");
 
       // Best-effort outbound integration dispatch (must not affect capture success).
-      void dispatchOutboundIntegrationEvent({
-        supabase,
+      const outboundPayload: OutboundWebhookJobData = {
         userId,
         eventType: "rebuttal.generated",
         payload: {
@@ -197,7 +197,8 @@ export async function rebuttalIntelRoutes(fastify: FastifyInstance): Promise<voi
           metadata: { mode: sourceMode, source: "roborebut" },
         },
         correlationId: String(data.id),
-      }).catch((e) => {
+      };
+      void outboundWebhookQueue.add(outboundPayload).catch((e) => {
         request.log.warn({ userId, err: e instanceof Error ? e.message : String(e) }, "integration_dispatch_failed");
       });
 
@@ -428,8 +429,7 @@ export async function rebuttalIntelRoutes(fastify: FastifyInstance): Promise<voi
       request.log.info({ userId, route: "/rebuttal-reviews", ms: Date.now() - t0 }, "review_ok");
 
       // Best-effort outbound integration dispatch.
-      void dispatchOutboundIntegrationEvent({
-        supabase,
+      const reviewOutbound: OutboundWebhookJobData = {
         userId,
         eventType: "review.submitted",
         payload: {
@@ -446,7 +446,8 @@ export async function rebuttalIntelRoutes(fastify: FastifyInstance): Promise<voi
           metadata: { source: "roborebut" },
         },
         correlationId: eventId,
-      }).catch((e) => {
+      };
+      void outboundWebhookQueue.add(reviewOutbound).catch((e) => {
         request.log.warn({ userId, err: e instanceof Error ? e.message : String(e) }, "integration_dispatch_failed");
       });
 

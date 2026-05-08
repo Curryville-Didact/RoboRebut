@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { transcribeCallAudio } from "../services/callTranscription.js";
+import { transcriptionQueue } from "../lib/queues.js";
+import type { TranscriptionJobData } from "../workers/transcriptionWorker.js";
 import { syncContactToCRMs } from "../services/crmSync.js";
 
 export async function callsRoutes(app: FastifyInstance) {
@@ -46,7 +47,12 @@ export async function callsRoutes(app: FastifyInstance) {
       const audioBuffer = Buffer.concat(chunks);
 
       try {
-        const result = await transcribeCallAudio(audioBuffer, filename, mimeType);
+        const job = await transcriptionQueue.add({
+          audioBase64: audioBuffer.toString("base64"),
+          filename,
+          mimeType,
+        } satisfies TranscriptionJobData);
+        const result = await job.finished();
 
         // fire-and-forget CRM sync — never blocks response
         syncContactToCRMs(app.supabase, userId, userEmail, userName).catch((err) =>

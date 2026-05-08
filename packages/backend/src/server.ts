@@ -8,6 +8,7 @@
  * Keep Phase 4.+(production) work off this path.
  */
 
+import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
@@ -46,17 +47,38 @@ import { runPhrasePatternAgent } from "./services/phrasePatternAgent.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
+import { initSentry, Sentry } from "./lib/sentry.js";
+
+initSentry();
 
 // railway deploy trigger: founder operations route rollout
 
 export async function createServer(): Promise<FastifyInstance> {
   const app = Fastify({
+    genReqId: () => randomUUID(),
     logger: {
-      level: config.nodeEnv === "development" ? "info" : "info",
+      level: process.env.LOG_LEVEL ?? "info",
       transport:
-        config.nodeEnv === "development"
-          ? { target: "pino-pretty", options: { colorize: true } }
-          : undefined,
+        process.env.NODE_ENV === "production"
+          ? undefined
+          : {
+              target: "pino-pretty",
+              options: { colorize: true, translateTime: "SYS:standard" },
+            },
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: request.url,
+            requestId: request.id,
+          };
+        },
+        res(reply) {
+          return {
+            statusCode: reply.statusCode,
+          };
+        },
+      },
     },
   });
 
@@ -104,6 +126,104 @@ export async function createServer(): Promise<FastifyInstance> {
       "x-ratelimit-reset": true,
       "retry-after": true,
     },
+  });
+
+  // Correlation ID — propagate request ID through all log calls
+  app.addHook("onRequest", async (request) => {
+    request.log.info(
+      { requestId: request.id, path: request.url, method: request.method },
+      "incoming request"
+    );
+  });
+
+  app.addHook("onResponse", async (request, reply) => {
+    request.log.info(
+      {
+        requestId: request.id,
+        path: request.url,
+        method: request.method,
+        statusCode: reply.statusCode,
+        responseTime: reply.elapsedTime,
+      },
+      "request completed"
+    );
+  });
+
+  app.setErrorHandler(async (error, request, reply) => {
+    if (reply.sent) {
+      return;
+    }
+
+    let statusCode = 500;
+    let errMessage = "Internal Server Error";
+    let errName = "Error";
+
+    if (error instanceof Error) {
+      errName = error.name;
+      errMessage = error.message;
+      const code = (error as Error & { statusCode?: number }).statusCode;
+      if (typeof code === "number" && code >= 400) {
+        statusCode = code;
+      }
+    } else if (
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error
+    ) {
+      const o = error as {
+        statusCode?: number;
+        message?: string;
+        error?: string;
+      };
+      if (typeof o.statusCode === "number" && o.statusCode >= 400) {
+        statusCode = o.statusCode;
+      }
+      if (typeof o.message === "string") {
+        errMessage = o.message;
+      }
+      if (typeof o.error === "string") {
+        errName = o.error;
+      }
+    }
+
+    request.log.error(
+      {
+        requestId: request.id,
+        err: {
+          message: errMessage,
+          stack:
+            process.env.NODE_ENV === "production" ? undefined : error instanceof Error
+              ? error.stack
+              : undefined,
+          code: error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined,
+        },
+        path: request.url,
+        method: request.method,
+      },
+      "request error"
+    );
+
+    if (statusCode >= 500 && process.env.SENTRY_DSN?.trim()) {
+      const capture =
+        error instanceof Error ? error : new Error(errMessage || String(error));
+      Sentry.captureException(capture, {
+        extra: {
+          requestId: request.id,
+          path: request.url,
+          method: request.method,
+        },
+      });
+    }
+
+    const clientMessage =
+      statusCode >= 500 ? "An internal error occurred" : errMessage;
+
+    return reply.code(statusCode).send({
+      statusCode,
+      error: errName || "Error",
+      message: clientMessage,
+      requestId: request.id,
+    });
   });
 
   // Rate limit overrides are set per-route via:
@@ -281,6 +401,9 @@ export async function createServer(): Promise<FastifyInstance> {
   if (process.env.PHRASE_AGENT_RUN_ON_BOOT === "true") {
     runPhrasePatternAgent(app.supabase).catch((e: unknown) => console.error("[PHRASE_PATTERN_AGENT_BOOT]", e));
   }
+
+  await import("./workers/transcriptionWorker.js");
+  await import("./workers/outboundWebhookWorker.js");
 
   return app;
 }
