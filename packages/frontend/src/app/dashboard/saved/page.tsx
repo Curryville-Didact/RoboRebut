@@ -53,6 +53,7 @@ export default function SavedResponsesPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(false);
   const [isFounder, setIsFounder] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<SavedResponseFilterState>(() =>
     defaultSavedResponseFilters()
   );
@@ -233,7 +234,7 @@ export default function SavedResponsesPage() {
       ) : (
         <>
           <div className="sticky top-[92px] z-10 rounded-xl border border-white/[0.08] bg-black/70 p-4 backdrop-blur supports-[backdrop-filter]:bg-black/50 space-y-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+            <div className="flex flex-col gap-3">
               <label className="flex min-w-[180px] flex-1 flex-col gap-1">
                 <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
                   Search
@@ -249,115 +250,131 @@ export default function SavedResponsesPage() {
                 />
               </label>
 
-              <label className="flex min-w-[140px] flex-col gap-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                  Category
-                </span>
-                <select
-                  value={filters.category}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, category: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
-                >
-                  <option value="">All</option>
-                  {filterOptions.categories.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
+                className="md:hidden w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-left text-xs font-medium text-gray-200 transition hover:bg-white/[0.1]"
+              >
+                Filters {filtersOpen ? "▲" : "▼"}
+              </button>
 
-              <label className="flex min-w-[140px] flex-col gap-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                  Objection type
-                </span>
-                <select
-                  value={filters.objectionType}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, objectionType: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
-                >
-                  <option value="">All</option>
-                  {filterOptions.objectionTypes.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div
+                className={[
+                  filtersOpen ? "block md:block" : "hidden md:block",
+                  "lg:flex lg:flex-row lg:flex-wrap lg:items-end",
+                ].join(" ")}
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+                  <label className="flex min-w-[140px] flex-col gap-1">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Category
+                    </span>
+                    <select
+                      value={filters.category}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, category: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
+                    >
+                      <option value="">All</option>
+                      {filterOptions.categories.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label className="flex min-w-[120px] flex-col gap-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                  Tone
-                </span>
-                <select
-                  value={filters.tone}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, tone: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
-                >
-                  <option value="">All</option>
-                  {filterOptions.tones.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label className="flex min-w-[140px] flex-col gap-1">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Objection type
+                    </span>
+                    <select
+                      value={filters.objectionType}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, objectionType: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
+                    >
+                      <option value="">All</option>
+                      {filterOptions.objectionTypes.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label className="flex min-w-[140px] flex-col gap-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                  Strategy
-                </span>
-                <select
-                  value={filters.strategy}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, strategy: e.target.value }))
-                  }
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
-                >
-                  <option value="">All</option>
-                  {filterOptions.strategies.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label className="flex min-w-[120px] flex-col gap-1">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Tone
+                    </span>
+                    <select
+                      value={filters.tone}
+                      onChange={(e) => setFilters((f) => ({ ...f, tone: e.target.value }))}
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
+                    >
+                      <option value="">All</option>
+                      {filterOptions.tones.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label className="flex min-w-[160px] flex-col gap-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                  Structured reply
-                </span>
-                <select
-                  value={filters.structuredReply}
-                  onChange={(e) =>
-                    setFilters((f) => ({
-                      ...f,
-                      structuredReply: e.target.value as SavedResponseFilterState["structuredReply"],
-                    }))
-                  }
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
-                >
-                  <option value="all">All</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
+                  <label className="flex min-w-[140px] flex-col gap-1">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Strategy
+                    </span>
+                    <select
+                      value={filters.strategy}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, strategy: e.target.value }))
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
+                    >
+                      <option value="">All</option>
+                      {filterOptions.strategies.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  disabled={!filtersActive}
-                  className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Clear filters
-                </button>
+                  <label className="flex min-w-[160px] flex-col gap-1">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Structured reply
+                    </span>
+                    <select
+                      value={filters.structuredReply}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          structuredReply:
+                            e.target.value as SavedResponseFilterState["structuredReply"],
+                        }))
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none ring-emerald-500/30 focus:ring-2"
+                    >
+                      <option value="all">All</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+
+                  <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      disabled={!filtersActive}
+                      className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
             <p className="text-xs text-gray-500">
