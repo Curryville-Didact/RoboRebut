@@ -72,42 +72,100 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
         });
       }
 
-      const hubspotRes = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/upsert", {
+      const searchRes = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
         method: "POST",
         headers: {
           Authorization: auth,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          inputs: [
+          filterGroups: [
             {
-              idProperty: "email",
-              id: email,
-              properties: {
-                email,
-                firstname: name,
-                phone: phone ?? "",
-              },
+              filters: [
+                {
+                  propertyName: "email",
+                  operator: "EQ",
+                  value: email,
+                },
+              ],
             },
           ],
         }),
       });
 
-      const data = await readHubSpotJsonSafe(hubspotRes);
-      if (!hubspotRes.ok) {
+      const searchData = await readHubSpotJsonSafe(searchRes);
+      if (!searchRes.ok) {
         app.log.warn(
-          { status: hubspotRes.status, data, userId: request.user.id },
-          "[hubspot] sync-contact failed"
+          { status: searchRes.status, data: searchData, userId: request.user.id },
+          "[hubspot] sync-contact search failed"
         );
         return sendApiError(reply, {
           status: 502,
           code: "INTERNAL_ERROR",
-          message: "HubSpot contact upsert failed",
-          details: { status: hubspotRes.status, data: data as any },
+          message: "HubSpot contact search failed",
+          details: { status: searchRes.status, data: searchData as any },
         });
       }
 
-      return reply.send({ ok: true, hubspot: data });
+      const results =
+        searchData && typeof searchData === "object" && searchData !== null
+          ? (((searchData as any).results ?? []) as unknown[])
+          : [];
+      const existingId =
+        results.length > 0 && results[0] && typeof results[0] === "object" && "id" in (results[0] as any)
+          ? String((results[0] as any).id)
+          : null;
+
+      const properties = {
+        email,
+        firstname: name,
+        phone,
+      };
+
+      const writeRes = existingId
+        ? await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${encodeURIComponent(existingId)}`, {
+            method: "PATCH",
+            headers: {
+              Authorization: auth,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ properties }),
+          })
+        : await fetch("https://api.hubapi.com/crm/v3/objects/contacts", {
+            method: "POST",
+            headers: {
+              Authorization: auth,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ properties }),
+          });
+
+      const writeData = await readHubSpotJsonSafe(writeRes);
+      if (!writeRes.ok) {
+        app.log.warn(
+          {
+            status: writeRes.status,
+            data: writeData,
+            userId: request.user.id,
+            existingId,
+          },
+          "[hubspot] sync-contact write failed"
+        );
+        return sendApiError(reply, {
+          status: 502,
+          code: "INTERNAL_ERROR",
+          message: "HubSpot contact sync failed",
+          details: { status: writeRes.status, data: writeData as any },
+        });
+      }
+
+      return reply.send({
+        ok: true,
+        hubspot: {
+          search: searchData,
+          contact: writeData,
+        },
+      });
       },
     }
   );
