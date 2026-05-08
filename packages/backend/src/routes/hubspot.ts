@@ -72,10 +72,6 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
         });
       }
 
-      const parts = name.split(/\s+/).filter(Boolean);
-      const firstname = parts[0] ?? name;
-      const lastname = parts.slice(1).join(" ") || undefined;
-
       const hubspotRes = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/upsert", {
         method: "POST",
         headers: {
@@ -83,16 +79,17 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          idProperty: "email",
-          properties: {
-            email,
-            firstname,
-            ...(lastname ? { lastname } : {}),
-            ...(phone ? { phone } : {}),
-            // Useful for debugging / attribution in HubSpot.
-            // Avoid custom properties here since they may not exist in all portals.
-            lifecyclestage: "lead",
-          },
+          inputs: [
+            {
+              idProperty: "email",
+              id: email,
+              properties: {
+                email,
+                firstname: name,
+                phone: phone ?? "",
+              },
+            },
+          ],
         }),
       });
 
