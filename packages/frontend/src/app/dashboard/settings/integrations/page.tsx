@@ -7,7 +7,6 @@ import { API_URL } from "@/lib/env";
 import { DashboardEmptyState, DashboardErrorPanel } from "@/components/dashboard/DashboardEmptyState";
 import { MSG_INTEGRATIONS_LOAD, MSG_SESSION } from "@/lib/userFacingErrors";
 import { trackEvent } from "@/lib/trackEvent";
-import { syncHubSpotContactAction } from "@/app/dashboard/integrations/actions";
 
 type ProviderType =
   | "generic_webhook"
@@ -49,52 +48,256 @@ async function waitForSessionAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
-function HubSpotSyncButton({ userId, email }: { userId: string; email: string }) {
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+type CrmType = "hubspot" | "gohighlevel" | "salesforce" | "zoho" | "velocify";
 
-  const canSync = userId.trim().length > 0 && email.trim().length > 0;
+type CrmConnection = {
+  id: string;
+  crm_type: CrmType;
+  is_active: boolean;
+  created_at: string;
+};
 
-  async function onSync() {
-    if (!canSync || loading) return;
-    setLoading(true);
-    setStatus(null);
-    try {
-      const res = await syncHubSpotContactAction({
-        userId,
-        email: email.trim(),
-        name: email.trim(),
-      });
-      if (!res.ok) {
-        setStatus({ ok: false, message: res.error });
-        return;
-      }
-      setStatus({ ok: true, message: "✓ Synced to HubSpot" });
-    } catch (e) {
-      setStatus({
-        ok: false,
-        message: e instanceof Error ? e.message : "Sync failed",
-      });
-    } finally {
-      setLoading(false);
+type CrmOption = {
+  crm_type: CrmType;
+  name: string;
+  initials: string;
+  colorClass: string;
+};
+
+const CRM_OPTIONS: CrmOption[] = [
+  { crm_type: "hubspot", name: "HubSpot", initials: "H", colorClass: "bg-orange-500" },
+  { crm_type: "gohighlevel", name: "GoHighLevel", initials: "GHL", colorClass: "bg-indigo-500" },
+  { crm_type: "salesforce", name: "Salesforce", initials: "SF", colorClass: "bg-sky-500" },
+  { crm_type: "zoho", name: "Zoho", initials: "Z", colorClass: "bg-emerald-500" },
+  { crm_type: "velocify", name: "Velocify", initials: "V", colorClass: "bg-fuchsia-500" },
+];
+
+function backendBaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
+  return raw ? raw.replace(/\/$/, "") : API_URL;
+}
+
+async function authedJsonFetch<T>(
+  inputUrl: string,
+  init: RequestInit
+): Promise<{ data: T | null; error: string | null }> {
+  try {
+    const token = await waitForSessionAccessToken();
+    if (!token) return { data: null, error: MSG_SESSION };
+    const res = await fetch(inputUrl, {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+        ...(init.body != null ? { "Content-Type": "application/json" } : {}),
+      },
+    });
+    const body = (await res.json().catch(() => null)) as any;
+    if (!res.ok) {
+      const msg =
+        body && typeof body === "object"
+          ? body?.error?.message ?? body?.error ?? body?.message
+          : null;
+      return { data: null, error: typeof msg === "string" && msg ? msg : `Request failed: ${res.status}` };
     }
+    return { data: (body ?? null) as T, error: null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Request failed" };
+  }
+}
+
+function CrmConnectionsPanel() {
+  const [loading, setLoading] = useState(true);
+  const [connections, setConnections] = useState<CrmConnection[]>([]);
+  const [apiKeys, setApiKeys] = useState<Record<CrmType, string>>({
+    hubspot: "",
+    gohighlevel: "",
+    salesforce: "",
+    zoho: "",
+    velocify: "",
+  });
+  const [messages, setMessages] = useState<Record<CrmType, { ok: boolean; text: string } | null>>({
+    hubspot: null,
+    gohighlevel: null,
+    salesforce: null,
+    zoho: null,
+    velocify: null,
+  });
+  const [busy, setBusy] = useState<Record<CrmType, boolean>>({
+    hubspot: false,
+    gohighlevel: false,
+    salesforce: false,
+    zoho: false,
+    velocify: false,
+  });
+
+  const base = backendBaseUrl();
+
+  const connectedByType = useMemo(() => {
+    const map = new Map<CrmType, CrmConnection>();
+    connections.forEach((c) => map.set(c.crm_type, c));
+    return map;
+  }, [connections]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await authedJsonFetch<{ ok: boolean; items: CrmConnection[] }>(
+      `${base}/api/crm/connections`,
+      { method: "GET" }
+    );
+    if (error) {
+      // show a global-ish message per CRM so user sees something
+      setMessages((prev) => {
+        const next = { ...prev };
+        CRM_OPTIONS.forEach((o) => {
+          next[o.crm_type] = { ok: false, text: error };
+        });
+        return next;
+      });
+      setConnections([]);
+    } else {
+      setConnections(Array.isArray(data?.items) ? data!.items : []);
+    }
+    setLoading(false);
+  }, [base]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function connect(crm_type: CrmType) {
+    const api_key = (apiKeys[crm_type] ?? "").trim();
+    if (!api_key) {
+      setMessages((p) => ({ ...p, [crm_type]: { ok: false, text: "API key is required" } }));
+      return;
+    }
+    setBusy((p) => ({ ...p, [crm_type]: true }));
+    setMessages((p) => ({ ...p, [crm_type]: null }));
+
+    const { error } = await authedJsonFetch<{ ok: boolean }>(`${base}/api/crm/connections`, {
+      method: "POST",
+      body: JSON.stringify({ crm_type, api_key }),
+    });
+
+    if (error) {
+      setMessages((p) => ({ ...p, [crm_type]: { ok: false, text: error } }));
+      setBusy((p) => ({ ...p, [crm_type]: false }));
+      return;
+    }
+
+    setMessages((p) => ({ ...p, [crm_type]: { ok: true, text: "Connected" } }));
+    await refresh();
+    setBusy((p) => ({ ...p, [crm_type]: false }));
+  }
+
+  async function disconnect(crm_type: CrmType) {
+    setBusy((p) => ({ ...p, [crm_type]: true }));
+    setMessages((p) => ({ ...p, [crm_type]: null }));
+
+    const { error } = await authedJsonFetch<{ ok: boolean }>(
+      `${base}/api/crm/connections/${crm_type}`,
+      { method: "DELETE" }
+    );
+
+    if (error) {
+      setMessages((p) => ({ ...p, [crm_type]: { ok: false, text: error } }));
+      setBusy((p) => ({ ...p, [crm_type]: false }));
+      return;
+    }
+
+    setMessages((p) => ({ ...p, [crm_type]: { ok: true, text: "Disconnected" } }));
+    await refresh();
+    setBusy((p) => ({ ...p, [crm_type]: false }));
   }
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <button
-        type="button"
-        onClick={() => void onSync()}
-        disabled={!canSync || loading}
-        className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {loading ? "Syncing…" : "Sync My Contact"}
-      </button>
-      {status ? (
-        <div className={status.ok ? "text-sm text-emerald-400/90" : "text-sm text-red-300/90"}>
-          {status.message}
-        </div>
-      ) : null}
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+      <div className="space-y-1">
+        <div className="text-sm font-semibold">Connect Your CRM</div>
+        <p className="text-xs text-gray-500">
+          Connect a CRM to enable sync and integrations.
+        </p>
+      </div>
+
+      {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {CRM_OPTIONS.map((crm) => {
+          const connected = connectedByType.get(crm.crm_type) != null;
+          const msg = messages[crm.crm_type];
+          const isBusy = busy[crm.crm_type];
+
+          return (
+            <div
+              key={crm.crm_type}
+              className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white ${crm.colorClass}`}
+                    aria-hidden
+                  >
+                    {crm.initials}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm text-gray-200">{crm.name}</div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-emerald-500" : "bg-gray-600"}`}
+                        aria-hidden
+                      />
+                      <span className={connected ? "text-emerald-400/90" : "text-gray-500"}>
+                        {connected ? "Connected" : "Not connected"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {connected ? (
+                  <div className="text-xs font-medium text-emerald-400/90">Connected ✓</div>
+                ) : null}
+              </div>
+
+              {!connected ? (
+                <div className="space-y-2">
+                  <input
+                    value={apiKeys[crm.crm_type]}
+                    onChange={(e) =>
+                      setApiKeys((p) => ({ ...p, [crm.crm_type]: e.target.value }))
+                    }
+                    placeholder="API key"
+                    className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void connect(crm.crm_type)}
+                    disabled={isBusy}
+                    className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-60"
+                  >
+                    {isBusy ? "Connecting…" : "Connect"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void disconnect(crm.crm_type)}
+                  disabled={isBusy}
+                  className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:opacity-60"
+                >
+                  {isBusy ? "Disconnecting…" : "Disconnect"}
+                </button>
+              )}
+
+              {msg ? (
+                <div className={msg.ok ? "text-xs text-emerald-400/90" : "text-xs text-red-300/90"}>
+                  {msg.text}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -542,11 +745,7 @@ export default function IntegrationsSettingsPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2">
-        <div className="text-sm font-semibold">HubSpot CRM Sync</div>
-        <p className="text-xs text-gray-500">Sync your contact to HubSpot CRM</p>
-        <HubSpotSyncButton userId={webhookUserId ?? ""} email={userEmail} />
-      </div>
+      <CrmConnectionsPanel />
     </div>
   );
 }
