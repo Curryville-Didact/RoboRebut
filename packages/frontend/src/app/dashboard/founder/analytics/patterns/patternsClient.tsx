@@ -134,12 +134,12 @@ export function FounderPatternAnalyticsClient({ apiBase }: { apiBase: string }) 
       if (conversationId.trim()) params.set("conversationId", conversationId.trim());
       const url = `${apiBase}/api/founder/analytics/pattern-intelligence?${params.toString()}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      const json = (await res.json()) as Summary;
       if (!res.ok) {
-        setError(`Request failed (${res.status}).`);
-        setData(json);
+        const errText = await res.text().catch(() => "");
+        setError(`Request failed (${res.status}). ${errText}`.trim());
         return;
       }
+      const json = (await res.json()) as Summary;
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed.");
