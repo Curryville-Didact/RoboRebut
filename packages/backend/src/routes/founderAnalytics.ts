@@ -68,8 +68,6 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
         id: string;
         conversation_id: string | null;
         objection_type: string | null;
-        pattern_key: string | null;
-        strategy_tag: string | null;
         confidence_score: number | null;
         was_saved: boolean | null;
         decision_variant: string | null;
@@ -80,7 +78,7 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
         let query = app.supabase
           .from('rebuttal_events')
           .select(
-            'id, conversation_id, objection_type, pattern_key, strategy_tag, confidence_score, was_saved, decision_variant, created_at'
+            'id, conversation_id, objection_type, confidence_score, was_saved, decision_variant, created_at'
           )
           .order('created_at', { ascending: false })
           .limit(limit);
@@ -118,27 +116,19 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
           phrases = [];
         }
 
-        const byPatternKey: Record<string, number> = {};
-        const byStrategyTag: Record<string, number> = {};
         const byVariant: Record<string, number> = {};
         const byObjectionType: Record<string, number> = {};
 
         let singleVariantCount = 0;
         let savedCount = 0;
-        let missingPatternKeyCount = 0;
         let nullConfidenceCount = 0;
         let confidenceSum = 0;
         let confidenceCount = 0;
 
         for (const r of intelRows) {
-          const patternKey = r.pattern_key?.trim() ? String(r.pattern_key) : null;
-          const strategyTag = r.strategy_tag?.trim() ? String(r.strategy_tag) : null;
           const variant = r.decision_variant?.trim() ? String(r.decision_variant) : null;
           const objectionType = r.objection_type?.trim() ? String(r.objection_type) : null;
 
-          if (!patternKey) missingPatternKeyCount += 1;
-          if (patternKey) byPatternKey[patternKey] = (byPatternKey[patternKey] ?? 0) + 1;
-          if (strategyTag) byStrategyTag[strategyTag] = (byStrategyTag[strategyTag] ?? 0) + 1;
           if (variant) byVariant[variant] = (byVariant[variant] ?? 0) + 1;
           if (objectionType) byObjectionType[objectionType] = (byObjectionType[objectionType] ?? 0) + 1;
 
@@ -153,15 +143,8 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
           }
         }
 
-        const topPatternKeys = Object.entries(byPatternKey)
-          .map(([patternKey, count]) => ({ patternKey, count }))
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
-
-        const topStrategyTags = Object.entries(byStrategyTag)
-          .map(([strategyTag, count]) => ({ strategyTag, count }))
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
+        const topPatternKeys: Array<{ patternKey: string; count: number }> = [];
+        const topStrategyTags: Array<{ strategyTag: string; count: number }> = [];
 
         const branches = Object.entries(byObjectionType)
           .map(([objectionType, total]) => ({
@@ -178,7 +161,7 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
         const total = intelRows.length;
         const singleCandidateRate = total > 0 ? singleVariantCount / total : null;
         const saveRate = total > 0 ? savedCount / total : null;
-        const missingPatternKeyRate = total > 0 ? missingPatternKeyCount / total : 0;
+        const missingPatternKeyRate = 0;
         const avgConfidence = confidenceCount > 0 ? confidenceSum / confidenceCount : null;
 
         const summary = {
