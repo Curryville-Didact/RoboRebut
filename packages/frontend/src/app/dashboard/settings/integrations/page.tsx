@@ -233,7 +233,7 @@ function CrmConnectionsPanel() {
       <div className="space-y-1">
         <div className="text-sm font-semibold">Connect Your CRM</div>
         <p className="text-xs text-gray-500">
-          Connect a CRM to enable sync and integrations.
+          Connect your CRM to automatically sync contact data after every call. Each broker uses their own API key.
         </p>
       </div>
 
@@ -544,10 +544,10 @@ export default function IntegrationsSettingsPage() {
     <div className="mx-auto max-w-6xl space-y-8">
       {/* ── Inbound webhook URLs ── */}
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-        <div className="text-sm font-semibold">Your inbound webhook URLs</div>
+        <div className="text-sm font-semibold">Inbound Call Webhooks</div>
         <p className="text-xs text-gray-500">
-          Paste one of these URLs into your CRM so RoboRebut automatically transcribes every
-          recorded call and opens a coaching session.
+          Paste one of these URLs into your CRM or dialer. When a call recording is ready, your
+          CRM will send it here automatically for transcription and coaching.
         </p>
         {!webhookUserId ? (
           <div className="text-xs text-gray-500">Loading…</div>
@@ -596,7 +596,13 @@ export default function IntegrationsSettingsPage() {
       ) : null}
 
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
-        <div className="text-sm font-semibold">Add integration</div>
+        <div className="space-y-1">
+          <div className="text-sm font-semibold">Outbound Event Webhooks</div>
+          <p className="text-xs text-gray-500">
+            Send RoboRebut events (rebuttals generated, reviews submitted) to your own tools,
+            Zapier, or Make.com. Add an endpoint URL below to receive these events.
+          </p>
+        </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="space-y-1">
             <div className="text-xs text-gray-500">Provider</div>
