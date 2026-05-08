@@ -60,34 +60,33 @@ type CrmConnection = {
 type CrmOption = {
   crm_type: CrmType;
   name: string;
-  logoUrl: string;
+  logoUrl?: string;
 };
 
 const CRM_OPTIONS: CrmOption[] = [
   {
     crm_type: "hubspot",
     name: "HubSpot",
-    logoUrl: "https://www.hubspot.com/hubfs/assets/hubspot.com/buzz/HubSpotOpenGraph.png",
+    logoUrl: "https://cdn.worldvectorlogo.com/logos/hubspot.svg",
   },
   {
     crm_type: "gohighlevel",
     name: "GoHighLevel",
-    logoUrl: "https://marketplace.gohighlevel.com/assets/images/logo.png",
+    logoUrl: "https://cdn.worldvectorlogo.com/logos/gohighlevel.svg",
   },
   {
     crm_type: "salesforce",
     name: "Salesforce",
-    logoUrl: "https://www.salesforce.com/news/wp-content/uploads/sites/3/2021/05/Salesforce-logo.png",
+    logoUrl: "https://cdn.worldvectorlogo.com/logos/salesforce-2.svg",
   },
   {
     crm_type: "zoho",
     name: "Zoho",
-    logoUrl: "https://www.zoho.com/branding/images/zoho-logo-512px.png",
+    logoUrl: "https://cdn.worldvectorlogo.com/logos/zoho.svg",
   },
   {
     crm_type: "velocify",
     name: "Velocify",
-    logoUrl: "https://www.velocify.com/wp-content/uploads/2014/09/velocify-logo.png",
   },
 ];
 
@@ -253,11 +252,17 @@ function CrmConnectionsPanel() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <img
-                    src={crm.logoUrl}
-                    alt={`${crm.name} logo`}
-                    className="w-8 h-8 object-contain rounded"
-                  />
+                  {crm.crm_type === "velocify" ? (
+                    <div className="w-8 h-8 rounded bg-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                      V
+                    </div>
+                  ) : (
+                    <img
+                      src={crm.logoUrl}
+                      alt={`${crm.name} logo`}
+                      className="w-8 h-8 object-contain"
+                    />
+                  )}
                   <div className="space-y-1">
                     <div className="text-sm text-gray-200">{crm.name}</div>
                     <div className="flex items-center gap-2 text-xs">
