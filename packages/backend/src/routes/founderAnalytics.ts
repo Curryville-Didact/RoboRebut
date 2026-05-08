@@ -68,9 +68,11 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
         id: string;
         conversation_id: string | null;
         objection_type: string | null;
+        objection_family: string | null;
+        tone_mode: string | null;
+        delivery_mode: string | null;
         confidence_score: number | null;
-        was_saved: boolean | null;
-        decision_variant: string | null;
+        deal_type: string | null;
         created_at: string;
       };
 
@@ -78,7 +80,7 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
         let query = app.supabase
           .from('rebuttal_events')
           .select(
-            'id, conversation_id, objection_type, confidence_score, was_saved, decision_variant, created_at'
+            'id, conversation_id, objection_type, objection_family, tone_mode, delivery_mode, confidence_score, deal_type, created_at'
           )
           .order('created_at', { ascending: false })
           .limit(limit);
@@ -116,24 +118,19 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
           phrases = [];
         }
 
-        const byVariant: Record<string, number> = {};
+        const variantUsage: Record<string, number> = {};
         const byObjectionType: Record<string, number> = {};
 
-        let singleVariantCount = 0;
-        let savedCount = 0;
         let nullConfidenceCount = 0;
         let confidenceSum = 0;
         let confidenceCount = 0;
 
         for (const r of intelRows) {
-          const variant = r.decision_variant?.trim() ? String(r.decision_variant) : null;
+          const deliveryMode = r.delivery_mode?.trim() ? String(r.delivery_mode) : null;
           const objectionType = r.objection_type?.trim() ? String(r.objection_type) : null;
 
-          if (variant) byVariant[variant] = (byVariant[variant] ?? 0) + 1;
+          if (deliveryMode) variantUsage[deliveryMode] = (variantUsage[deliveryMode] ?? 0) + 1;
           if (objectionType) byObjectionType[objectionType] = (byObjectionType[objectionType] ?? 0) + 1;
-
-          if (variant === 'single') singleVariantCount += 1;
-          if (r.was_saved === true) savedCount += 1;
 
           if (r.confidence_score == null) {
             nullConfidenceCount += 1;
@@ -159,8 +156,9 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
           .slice(0, 5);
 
         const total = intelRows.length;
-        const singleCandidateRate = total > 0 ? singleVariantCount / total : null;
-        const saveRate = total > 0 ? savedCount / total : null;
+        const singleCandidateRate = null;
+        const saveRate = null;
+        const savedCount = 0;
         const missingPatternKeyRate = 0;
         const avgConfidence = confidenceCount > 0 ? confidenceSum / confidenceCount : null;
 
@@ -181,7 +179,7 @@ export async function founderAnalyticsRoutes(app: FastifyInstance) {
           },
           dvl: {
             appliedRate: null,
-            variantUsage: byVariant,
+            variantUsage,
           },
           confidence: { avg: avgConfidence },
           saves: {
