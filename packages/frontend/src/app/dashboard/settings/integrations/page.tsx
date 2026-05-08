@@ -7,6 +7,7 @@ import { API_URL } from "@/lib/env";
 import { DashboardEmptyState, DashboardErrorPanel } from "@/components/dashboard/DashboardEmptyState";
 import { MSG_INTEGRATIONS_LOAD, MSG_SESSION } from "@/lib/userFacingErrors";
 import { trackEvent } from "@/lib/trackEvent";
+import { syncHubSpotContactAction } from "@/app/dashboard/integrations/actions";
 
 type ProviderType =
   | "generic_webhook"
@@ -46,6 +47,56 @@ async function waitForSessionAccessToken(): Promise<string | null> {
   const supabase = createClient();
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
+}
+
+function HubSpotSyncButton({ userId, email }: { userId: string; email: string }) {
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const canSync = userId.trim().length > 0 && email.trim().length > 0;
+
+  async function onSync() {
+    if (!canSync || loading) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await syncHubSpotContactAction({
+        userId,
+        email: email.trim(),
+        name: email.trim(),
+      });
+      if (!res.ok) {
+        setStatus({ ok: false, message: res.error });
+        return;
+      }
+      setStatus({ ok: true, message: "✓ Synced to HubSpot" });
+    } catch (e) {
+      setStatus({
+        ok: false,
+        message: e instanceof Error ? e.message : "Sync failed",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <button
+        type="button"
+        onClick={() => void onSync()}
+        disabled={!canSync || loading}
+        className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {loading ? "Syncing…" : "Sync My Contact"}
+      </button>
+      {status ? (
+        <div className={status.ok ? "text-sm text-emerald-400/90" : "text-sm text-red-300/90"}>
+          {status.message}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function fmtTs(ts: string): string {
@@ -94,6 +145,7 @@ export default function IntegrationsSettingsPage() {
   const [logs, setLogs] = useState<DeliveryLog[] | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [webhookUserId, setWebhookUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
 
   const BACKEND_URL =
     process.env.NEXT_PUBLIC_API_URL ??
@@ -132,6 +184,7 @@ export default function IntegrationsSettingsPage() {
       .auth.getUser()
       .then(({ data }) => {
         setWebhookUserId(data.user?.id ?? null);
+        setUserEmail(data.user?.email ?? "");
       });
   }, [load]);
 
@@ -487,6 +540,12 @@ export default function IntegrationsSettingsPage() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2">
+        <div className="text-sm font-semibold">HubSpot CRM Sync</div>
+        <p className="text-xs text-gray-500">Sync your contact to HubSpot CRM</p>
+        <HubSpotSyncButton userId={webhookUserId ?? ""} email={userEmail} />
       </div>
     </div>
   );
