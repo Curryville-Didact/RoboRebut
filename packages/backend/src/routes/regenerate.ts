@@ -22,7 +22,7 @@ import {
   incrementUsageCount,
   isPlanEnforcementError,
   resolveGenerationBurstKey,
-  resolveRequestPlanContext,
+  resolvePlanContextForUserId,
 } from "../services/planEnforcement.js";
 
 type RegenerateBody = {
@@ -41,7 +41,9 @@ type RegenerateBody = {
 export async function regenerateRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: RegenerateBody }>(
     "/api/regenerate",
-    async (request, reply) => {
+    {
+      preHandler: [fastify.authenticate],
+      handler: async (request, reply) => {
       const body = request.body;
 
       if (!body?.raw_input || typeof body.raw_input !== "string") {
@@ -51,21 +53,15 @@ export async function regenerateRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const context = await resolveRequestPlanContext(
+      const context = await resolvePlanContextForUserId(
         fastify.supabase,
-        request.headers.authorization
+        request.user.id
       );
 
       try {
         assertGenerationBurstAllowance(
-          resolveGenerationBurstKey(context?.user.id ?? null, request)
+          resolveGenerationBurstKey(context.user.id, request)
         );
-        if (!context) {
-          return reply.status(401).send({
-            code: "AUTH_REQUIRED",
-            message: "Authentication required",
-          });
-        }
         await assertUsageAllowance(fastify.supabase, context);
       } catch (err) {
         if (isPlanEnforcementError(err)) {
@@ -146,6 +142,7 @@ export async function regenerateRoutes(fastify: FastifyInstance) {
       }
 
       return reply.send(formatted);
+    },
     }
   );
 }

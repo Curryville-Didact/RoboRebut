@@ -211,26 +211,22 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post<{
     Body: { return_url?: string };
-  }>("/billing/customer-portal/session", async (request, reply) => {
-    const authHeader = request.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      return reply.status(401).send({ error: "unauthenticated", message: "Missing or invalid Authorization header." });
-    }
+  }>("/billing/customer-portal/session", {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
     if (!fastify.supabase) {
       return reply.status(503).send({ error: "server_misconfigured", message: "Auth is not configured on the backend." });
     }
 
-    const token = authHeader.slice(7);
-    const { data: userData, error: userErr } = await fastify.supabase.auth.getUser(token);
-    if (userErr || !userData.user?.email) {
+    const email = request.user.email ?? null;
+    if (!email) {
       return reply.status(401).send({
         error: "unauthenticated",
-        message: userErr?.message ?? "Invalid or expired token.",
+        message: "Invalid or expired token.",
       });
     }
 
-    const userId = userData.user.id;
-    const email = userData.user.email;
+    const userId = request.user.id;
     const usage = await getNormalizedUsageForUser(fastify.supabase, userId);
     const plan = usage?.plan ?? "free";
     /** Polar customer portal (manage subscription, upgrade/downgrade) — available to paid Starter and Pro. */
@@ -309,31 +305,21 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
 
     fastify.log.info({ userId, customerId }, "[polarPortal] session created");
     return reply.send({ url: session.customer_portal_url });
+    },
   });
 
   fastify.post("/billing/sync-entitlement", {
+    preHandler: [fastify.authenticate],
     handler: async (request, reply) => {
-      const authHeader = request.headers.authorization;
       const hasBillingConfig = Boolean(process.env.POLAR_ACCESS_TOKEN?.trim());
       fastify.log.info(
         {
           path: request.url,
           method: request.method,
-          hasAuthHeader: Boolean(authHeader),
           hasBillingConfig,
         },
         "[billingSync] request received"
       );
-
-      if (!authHeader?.startsWith("Bearer ")) {
-        const response: BillingSyncEntitlementResponse = {
-          ok: false,
-          status: "unauthenticated",
-          message: "Missing or invalid Authorization header.",
-        };
-        fastify.log.info({ status: response.status }, "[billingSync] request resolved");
-        return reply.send(response);
-      }
 
       if (!fastify.supabase) {
         const response: BillingSyncEntitlementResponse = {
@@ -345,23 +331,8 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.send(response);
       }
 
-      const token = authHeader.slice(7);
-      const { data, error } = await fastify.supabase.auth.getUser(token);
-      if (error || !data.user) {
-        const response: BillingSyncEntitlementResponse = {
-          ok: false,
-          status: "unauthenticated",
-          message: error?.message ?? "Invalid or expired token.",
-        };
-        fastify.log.warn(
-          { status: response.status, message: response.message },
-          "[billingSync] auth rejected"
-        );
-        return reply.send(response);
-      }
-
-      const userId = data.user.id;
-      const email = data.user.email ?? null;
+      const userId = request.user.id;
+      const email = request.user.email ?? null;
       fastify.log.info({ userId, email }, "[billingSync] authenticated request");
 
       const sync = await syncPolarEntitlementForUser({
