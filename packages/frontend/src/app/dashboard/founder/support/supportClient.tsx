@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { AdminOpsPanels } from "./AdminOpsPanels";
 
 type SupportResponse = {
   identity?: {
@@ -141,6 +142,8 @@ export function FounderSupportClient({
 
   return (
     <div className="space-y-4">
+      <AdminOpsPanels apiBase={apiBase} />
+
       <Section title="Lookup">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
@@ -171,7 +174,7 @@ export function FounderSupportClient({
             type="button"
             onClick={() => void inspect()}
             disabled={loading || (!email.trim() && !userId.trim())}
-            className="inline-flex rounded-lg border border-emerald-500/40 bg-emerald-600/15 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-600/25 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-[44px] items-center rounded-lg border border-emerald-500/40 bg-emerald-600/15 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-600/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading ? "Inspecting…" : "Inspect account"}
           </button>

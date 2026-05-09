@@ -43,6 +43,8 @@ import { phrasePatternsRoutes } from "./routes/phrasePatternsRoutes.js";
 import { transcriptsRoutes } from "./routes/transcripts.js";
 import hubspot from "./routes/hubspot.js";
 import crmConnections from "./routes/crmConnections.js";
+import { featureFlagRoutes } from "./routes/featureFlags.js";
+import { adminToolsRoutes } from "./routes/adminTools.js";
 import { runPhrasePatternAgent } from "./services/phrasePatternAgent.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
@@ -57,6 +59,7 @@ initSentry();
 export async function createServer(): Promise<FastifyInstance> {
   const app = Fastify({
     genReqId: () => randomUUID(),
+    connectionTimeout: 30_000,
     logger: {
       level: process.env.LOG_LEVEL ?? "info",
       transport:
@@ -234,7 +237,31 @@ export async function createServer(): Promise<FastifyInstance> {
   app.get(
     "/health",
     { config: { rateLimit: false } },
-    async () => ({ ok: true })
+    async (_req, reply) => {
+      const checks: Record<string, string> = {};
+
+      try {
+        await app.redis.ping();
+        checks.redis = "ok";
+      } catch {
+        checks.redis = "error";
+      }
+
+      try {
+        await app.prisma.$queryRaw`SELECT 1`;
+        checks.db = "ok";
+      } catch {
+        checks.db = "error";
+      }
+
+      const healthy = Object.values(checks).every((v) => v === "ok");
+      return reply.code(healthy ? 200 : 503).send({
+        ok: healthy,
+        checks,
+        timestamp: new Date().toISOString(),
+        version: process.env.npm_package_version ?? "unknown",
+      });
+    }
   );
 
   await app.register(rebuttalRoutes);
@@ -259,6 +286,8 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(phrasePatternsRoutes, { prefix: "/api" });
   await app.register(hubspot, { prefix: "/api" });
   await app.register(crmConnections, { prefix: "/api" });
+  await app.register(featureFlagRoutes, { prefix: "/api" });
+  await app.register(adminToolsRoutes, { prefix: "/api" });
 
   app.get(
     "/api/me",

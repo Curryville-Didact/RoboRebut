@@ -5,6 +5,7 @@ import { MobileSidebar } from "@/components/dashboard/MobileSidebar";
 import { isFounderEmail } from "@/lib/founder";
 import DashboardViewportLock from "../../components/dashboard/DashboardViewportLock";
 import { BottomNav } from "@/components/dashboard/BottomNav";
+import { IncidentBanner } from "@/components/dashboard/IncidentBanner";
 
 export default async function DashboardLayout({
   children,
@@ -24,6 +25,7 @@ export default async function DashboardLayout({
 
   return (
     <>
+      <IncidentBanner />
       <DashboardViewportLock />
       <div className="flex h-dvh overflow-hidden bg-black text-white">
       {/* Sidebar */}

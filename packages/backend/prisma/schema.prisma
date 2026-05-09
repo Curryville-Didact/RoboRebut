@@ -159,3 +159,13 @@ model ProcessedWebhookEvent {
 
   @@map("processed_webhook_events")
 }
+
+model FeatureFlag {
+  key         String   @id
+  enabled     Boolean  @default(false)
+  description String   @default("")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedBy   String?  @map("updated_by")
+
+  @@map("feature_flags")
+}
