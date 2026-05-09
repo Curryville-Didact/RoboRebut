@@ -22,6 +22,22 @@ const VALID_SOURCES = [
 
 type ValidSource = (typeof VALID_SOURCES)[number];
 
+/** Structural slice of Prisma used here (same instance as `fastify.prisma`). */
+type CallWebhookDb = {
+  profile: {
+    findUnique(args: {
+      where: { id: string };
+      select: { webhookSecret: true };
+    }): Promise<{ webhookSecret: string } | null>;
+  };
+  processedWebhookEvent: {
+    findUnique(args: { where: { id: string } }): Promise<{ id: string } | null>;
+    create(args: {
+      data: { id: string; source: string };
+    }): Promise<unknown>;
+  };
+};
+
 function isValidSource(s: string): s is ValidSource {
   return (VALID_SOURCES as readonly string[]).includes(s);
 }
@@ -50,13 +66,14 @@ export async function callWebhookRoutes(
     Querystring: { userId?: string };
     Body: Record<string, unknown>;
   }>("/calls/webhook/:source", async (req, reply) => {
+    const prisma = fastify.prisma as unknown as CallWebhookDb;
     const userIdRaw = req.query.userId as string | undefined;
     if (!userIdRaw?.trim()) {
       return reply.code(400).send({ error: "Missing userId" });
     }
     const userId = userIdRaw.trim();
 
-    const profile = await fastify.prisma.profile.findUnique({
+    const profile = await prisma.profile.findUnique({
       where: { id: userId },
       select: { webhookSecret: true },
     });
@@ -118,7 +135,7 @@ export async function callWebhookRoutes(
     const crmCallId = parsed.crmCallId;
     if (crmCallId) {
       const dedupeId = `crm:${source}:${crmCallId}`;
-      const existing = await fastify.prisma.processedWebhookEvent.findUnique({
+      const existing = await prisma.processedWebhookEvent.findUnique({
         where: { id: dedupeId },
       });
       if (existing) {
@@ -127,7 +144,7 @@ export async function callWebhookRoutes(
       }
 
       try {
-        await fastify.prisma.processedWebhookEvent.create({
+        await prisma.processedWebhookEvent.create({
           data: {
             id: dedupeId,
             source: `crm:${source}`,
