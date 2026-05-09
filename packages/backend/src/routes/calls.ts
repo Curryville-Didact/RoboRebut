@@ -1,11 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { transcriptionQueue } from "../lib/queues.js";
 import type { TranscriptionJobData } from "../workers/transcriptionWorker.js";
-import { syncContactToCRMs } from "../services/crmSync.js";
 
 export async function callsRoutes(app: FastifyInstance) {
   // POST /api/calls/transcribe
-  // Accepts multipart audio upload, returns transcript + detected objections
+  // Accepts multipart audio upload, enqueues transcription; poll GET transcription-status for result.
   app.post(
     "/calls/transcribe",
     {
@@ -13,17 +12,6 @@ export async function callsRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
-      const userId = request.user.id;
-
-      const { data: profile } = await app.supabase
-        .from("users")
-        .select("email, full_name")
-        .eq("id", userId)
-        .single();
-
-      const userEmail = profile?.email ?? "";
-      const userName = profile?.full_name ?? "";
-
       const data = await (
         request as typeof request & {
           file: () => Promise<{
@@ -47,36 +35,63 @@ export async function callsRoutes(app: FastifyInstance) {
       const audioBuffer = Buffer.concat(chunks);
 
       try {
+        const { data: profile } = await app.supabase
+          .from("profiles")
+          .select("email, full_name")
+          .eq("id", request.user.id)
+          .single();
+
+        const p = profile as {
+          email?: string | null;
+          full_name?: string | null;
+        } | null;
+        const userEmail = p?.email ?? "";
+        const userName = p?.full_name ?? "";
+
         const job = await transcriptionQueue.add({
           audioBase64: audioBuffer.toString("base64"),
           filename,
           mimeType,
+          userId: request.user.id,
+          userEmail,
+          userName,
         } satisfies TranscriptionJobData);
-        const result = await job.finished();
 
-        // fire-and-forget CRM sync — never blocks response
-        syncContactToCRMs(app.supabase, userId, userEmail, userName).catch((err) =>
-          console.warn("[calls] crmSync fire-and-forget error", err)
-        );
-
-        return reply.send({
+        return reply.code(202).send({
           ok: true,
-          transcript: result.transcript,
-          detectedObjections: result.detectedObjections,
-          detectedVertical: result.detectedVertical,
-          detectedIndustry: result.industry,
-          businessName: result.businessName,
-          monthlyRevenue: result.monthlyRevenue,
-          painPoints: result.painPoints,
-          statedObjections: result.statedObjections,
-          trustFlags: result.trustFlags,
-          urgency: result.urgency,
-          decisionMaker: result.decisionMaker,
+          message: "Transcription queued successfully",
+          jobId: job.id,
+          status: "processing",
+          statusUrl: `/api/calls/transcription-status/${job.id}`,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Transcription failed.";
         return reply.status(500).send({ ok: false, error: message });
       }
+    }
+  );
+
+  // GET /api/calls/transcription-status/:jobId — poll Bull job until completed
+  app.get<{ Params: { jobId: string } }>(
+    "/calls/transcription-status/:jobId",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const { jobId } = request.params;
+      const job = await transcriptionQueue.getJob(jobId);
+      if (!job) {
+        return reply.status(404).send({ error: "Job not found" });
+      }
+
+      const state = await job.getState();
+      const progress = typeof job.progress === "function" ? job.progress() : 0;
+
+      return reply.send({
+        jobId: job.id,
+        state,
+        progress,
+        result:
+          state === "completed" ? (job.returnvalue ?? null) : null,
+      });
     }
   );
 }
