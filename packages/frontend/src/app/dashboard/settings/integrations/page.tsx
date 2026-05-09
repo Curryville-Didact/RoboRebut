@@ -57,6 +57,7 @@ type CrmConnection = {
   created_at: string;
   instance_url?: string | null;
   dc_region?: string | null;
+  hasHubSpotAppSecret?: boolean;
 };
 
 type CrmOption = {
@@ -126,7 +127,13 @@ async function authedJsonFetch<T>(
   }
 }
 
-function CrmConnectionsPanel() {
+function CrmConnectionsPanel({
+  webhookUserId,
+  hubspotWebhookPublicBaseUrl,
+}: {
+  webhookUserId: string | null;
+  hubspotWebhookPublicBaseUrl: string;
+}) {
   const [loading, setLoading] = useState(true);
   const [connections, setConnections] = useState<CrmConnection[]>([]);
   const [apiKeys, setApiKeys] = useState<Record<CrmType, string>>({
@@ -168,8 +175,15 @@ function CrmConnectionsPanel() {
   });
   const [salesforceInstanceUrl, setSalesforceInstanceUrl] = useState("");
   const [zohoDcRegion, setZohoDcRegion] = useState<string>("com");
+  const [hubSpotAppSecret, setHubSpotAppSecret] = useState("");
+  const [showHubSpotAppSecret, setShowHubSpotAppSecret] = useState(false);
 
   const base = backendBaseUrl();
+
+  const hubSpotInboundWebhookUrl =
+    webhookUserId && hubspotWebhookPublicBaseUrl.trim()
+      ? `${hubspotWebhookPublicBaseUrl.replace(/\/$/, "")}/api/calls/webhook/hubspot?userId=${encodeURIComponent(webhookUserId)}`
+      : "";
 
   const connectedByType = useMemo(() => {
     const map = new Map<CrmType, CrmConnection>();
@@ -268,6 +282,9 @@ function CrmConnectionsPanel() {
     }
     if (crm_type === "zoho") {
       body.dc_region = zohoDcRegion.trim() || "com";
+    }
+    if (crm_type === "hubspot" && hubSpotAppSecret.trim()) {
+      body.hubspotAppSecret = hubSpotAppSecret.trim();
     }
 
     const { error } = await authedJsonFetch<{ ok: boolean }>(`${base}/api/crm/connections`, {
@@ -405,6 +422,74 @@ function CrmConnectionsPanel() {
                     </select>
                   ) : null}
 
+                  {crm.crm_type === "hubspot" ? (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-400">
+                          HubSpot App Secret (for automatic call ingestion)
+                        </label>
+                        <div className="flex flex-wrap items-stretch gap-2">
+                          <input
+                            type={showHubSpotAppSecret ? "text" : "password"}
+                            value={hubSpotAppSecret}
+                            onChange={(e) => setHubSpotAppSecret(e.target.value)}
+                            placeholder="Paste your HubSpot app client secret"
+                            autoComplete="off"
+                            className="min-h-[44px] min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowHubSpotAppSecret((v) => !v)}
+                            className="min-h-[44px] shrink-0 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-medium text-gray-200 transition hover:bg-white/[0.1]"
+                          >
+                            {showHubSpotAppSecret ? "Hide" : "Show"}
+                          </button>
+                        </div>
+                        <p className="text-[11px] leading-snug text-gray-500">
+                          Required only if you want HubSpot to automatically send call recordings to
+                          RoboRebut. Find this in HubSpot → Settings → Integrations → Private Apps →
+                          your app → Auth.
+                        </p>
+                      </div>
+                      <details className="rounded-lg border border-white/10 bg-black/15 px-3 py-2">
+                        <summary className="cursor-pointer text-xs font-medium text-gray-300 select-none">
+                          Setup Instructions
+                        </summary>
+                        <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[11px] text-gray-400">
+                          <li>In HubSpot, go to Settings → Integrations → Private Apps</li>
+                          <li>Create a private app with scopes: crm.objects.calls.read</li>
+                          <li>Go to Webhooks → Create subscription</li>
+                          <li>Event type: &quot;Call property change&quot;</li>
+                          <li>Property: hs_call_recording_url</li>
+                          <li className="space-y-1">
+                            <span className="block">
+                              Target URL (same as Inbound Call Webhooks → HubSpot):
+                            </span>
+                            {hubSpotInboundWebhookUrl ? (
+                              <span className="flex flex-wrap items-center gap-2">
+                                <code className="break-all rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-gray-300">
+                                  {hubSpotInboundWebhookUrl}
+                                </code>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void navigator.clipboard.writeText(hubSpotInboundWebhookUrl)
+                                  }
+                                  className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] text-gray-300 hover:bg-white/[0.1]"
+                                >
+                                  Copy URL
+                                </button>
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">Loading your webhook URL…</span>
+                            )}
+                          </li>
+                          <li>Paste your app secret above and save</li>
+                        </ol>
+                      </details>
+                    </div>
+                  ) : null}
+
                   <button
                     type="button"
                     onClick={() => void connect(crm.crm_type)}
@@ -458,15 +543,103 @@ function CrmConnectionsPanel() {
                     </select>
                   ) : null}
 
+                  {crm.crm_type === "hubspot" ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="text-gray-500">HubSpot app secret:</span>
+                        <span
+                          className={
+                            connectedByType.get("hubspot")?.hasHubSpotAppSecret
+                              ? "text-emerald-400/90"
+                              : "text-amber-400/90"
+                          }
+                        >
+                          {connectedByType.get("hubspot")?.hasHubSpotAppSecret
+                            ? "Saved"
+                            : "Not set"}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-400">
+                          HubSpot App Secret (for automatic call ingestion)
+                        </label>
+                        <div className="flex flex-wrap items-stretch gap-2">
+                          <input
+                            type={showHubSpotAppSecret ? "text" : "password"}
+                            value={hubSpotAppSecret}
+                            onChange={(e) => setHubSpotAppSecret(e.target.value)}
+                            placeholder="Paste your HubSpot app client secret"
+                            autoComplete="off"
+                            className="min-h-[44px] min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowHubSpotAppSecret((v) => !v)}
+                            className="min-h-[44px] shrink-0 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-medium text-gray-200 transition hover:bg-white/[0.1]"
+                          >
+                            {showHubSpotAppSecret ? "Hide" : "Show"}
+                          </button>
+                        </div>
+                        <p className="text-[11px] leading-snug text-gray-500">
+                          Required only if you want HubSpot to automatically send call recordings to
+                          RoboRebut. Find this in HubSpot → Settings → Integrations → Private Apps →
+                          your app → Auth.
+                        </p>
+                      </div>
+                      <details className="rounded-lg border border-white/10 bg-black/15 px-3 py-2">
+                        <summary className="cursor-pointer text-xs font-medium text-gray-300 select-none">
+                          Setup Instructions
+                        </summary>
+                        <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[11px] text-gray-400">
+                          <li>In HubSpot, go to Settings → Integrations → Private Apps</li>
+                          <li>Create a private app with scopes: crm.objects.calls.read</li>
+                          <li>Go to Webhooks → Create subscription</li>
+                          <li>Event type: &quot;Call property change&quot;</li>
+                          <li>Property: hs_call_recording_url</li>
+                          <li className="space-y-1">
+                            <span className="block">
+                              Target URL (same as Inbound Call Webhooks → HubSpot):
+                            </span>
+                            {hubSpotInboundWebhookUrl ? (
+                              <span className="flex flex-wrap items-center gap-2">
+                                <code className="break-all rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-gray-300">
+                                  {hubSpotInboundWebhookUrl}
+                                </code>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void navigator.clipboard.writeText(hubSpotInboundWebhookUrl)
+                                  }
+                                  className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] text-gray-300 hover:bg-white/[0.1]"
+                                >
+                                  Copy URL
+                                </button>
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">Loading your webhook URL…</span>
+                            )}
+                          </li>
+                          <li>Paste your app secret above and save</li>
+                        </ol>
+                      </details>
+                    </div>
+                  ) : null}
+
                   <div className="flex flex-wrap gap-2">
-                    {(crm.crm_type === "salesforce" || crm.crm_type === "zoho") && (
+                    {(crm.crm_type === "salesforce" ||
+                      crm.crm_type === "zoho" ||
+                      crm.crm_type === "hubspot") && (
                       <button
                         type="button"
                         onClick={() => void connect(crm.crm_type)}
                         disabled={isBusy}
                         className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-60"
                       >
-                        {isBusy ? "Saving…" : "Save region / URL"}
+                        {isBusy
+                          ? "Saving…"
+                          : crm.crm_type === "hubspot"
+                            ? "Save HubSpot settings"
+                            : "Save region / URL"}
                       </button>
                     )}
                     <button
@@ -1097,7 +1270,10 @@ export default function IntegrationsSettingsPage() {
         </div>
       </div>
 
-      <CrmConnectionsPanel />
+      <CrmConnectionsPanel
+        webhookUserId={webhookUserId}
+        hubspotWebhookPublicBaseUrl={BACKEND_URL}
+      />
     </div>
   );
 }

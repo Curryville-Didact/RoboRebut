@@ -9,7 +9,10 @@ import { sendApiError } from "../lib/apiErrors.js";
 import { parseCrmPayload } from "../services/crmWebhookParser.js";
 import { transcribeCallAudio } from "../services/callTranscription.js";
 import { syncContactToCRMs } from "../services/crmSync.js";
-import { verifyWebhookSignature } from "../services/webhookSigning.js";
+import {
+  verifyHubSpotSignature,
+  verifyWebhookSignature,
+} from "../services/webhookSigning.js";
 
 const VALID_SOURCES = [
   "generic_webhook",
@@ -64,7 +67,7 @@ export async function callWebhookRoutes(
   fastify.post<{
     Params: { source: string };
     Querystring: { userId?: string };
-    Body: Record<string, unknown>;
+    Body: unknown;
   }>("/calls/webhook/:source", async (req, reply) => {
     const prisma = fastify.prisma as unknown as CallWebhookDb;
     const userIdRaw = req.query.userId as string | undefined;
@@ -72,29 +75,6 @@ export async function callWebhookRoutes(
       return reply.code(400).send({ error: "Missing userId" });
     }
     const userId = userIdRaw.trim();
-
-    const profile = await prisma.profile.findUnique({
-      where: { id: userId },
-      select: { webhookSecret: true },
-    });
-    if (!profile?.webhookSecret?.trim()) {
-      return reply.code(403).send({
-        error: "Webhook not configured. Rotate your secret in settings.",
-      });
-    }
-
-    const sigHdr =
-      req.headers["x-webhook-signature"] ?? req.headers["x-hub-signature-256"] ?? "";
-    const signature = Array.isArray(sigHdr) ? sigHdr[0] ?? "" : String(sigHdr);
-    if (!signature.trim()) {
-      return reply.code(401).send({ error: "Missing x-webhook-signature header" });
-    }
-
-    const rawBody = JSON.stringify(req.body ?? {});
-    const valid = verifyWebhookSignature(profile.webhookSecret, rawBody, signature);
-    if (!valid) {
-      return reply.code(401).send({ error: "Invalid webhook signature" });
-    }
 
     const source = req.params.source;
 
@@ -114,6 +94,80 @@ export async function callWebhookRoutes(
       });
     }
 
+    let signatureVerified = false;
+
+    // HubSpot native signature verification (alternative to RoboRebut HMAC).
+    // Used when webhook is configured directly in HubSpot developer portal.
+    if (source === "hubspot") {
+      const hubspotSigHdr = req.headers["x-hubspot-signature-v3"];
+      const hubspotTsHdr = req.headers["x-hubspot-request-timestamp"];
+      const hubspotSig = Array.isArray(hubspotSigHdr)
+        ? hubspotSigHdr[0] ?? ""
+        : String(hubspotSigHdr ?? "");
+      const hubspotTimestamp = Array.isArray(hubspotTsHdr)
+        ? hubspotTsHdr[0] ?? ""
+        : String(hubspotTsHdr ?? "");
+
+      if (hubspotSig.trim() && hubspotTimestamp.trim()) {
+        const { data: crmConn } = await fastify.supabase
+          .from("crm_connections")
+          .select("hubspot_app_secret")
+          .eq("user_id", userId)
+          .eq("crm_type", "hubspot")
+          .eq("is_active", true)
+          .maybeSingle();
+
+        const hubspotAppSecret = (
+          crmConn as { hubspot_app_secret?: string | null } | null
+        )?.hubspot_app_secret?.trim();
+
+        if (hubspotAppSecret) {
+          const apiBase = process.env.API_URL?.trim().replace(/\/$/, "") ?? "";
+          const fullUrl = `${apiBase}/api/calls/webhook/hubspot?userId=${encodeURIComponent(userId)}`;
+          const rawBody = JSON.stringify(req.body ?? {});
+          const hubspotValid = verifyHubSpotSignature(
+            hubspotAppSecret,
+            req.method,
+            fullUrl,
+            rawBody,
+            hubspotTimestamp.trim(),
+            hubspotSig.trim()
+          );
+          if (!hubspotValid) {
+            return reply.code(401).send({ error: "Invalid HubSpot signature" });
+          }
+          signatureVerified = true;
+        }
+      }
+    }
+
+    if (!signatureVerified) {
+      const profile = await prisma.profile.findUnique({
+        where: { id: userId },
+        select: { webhookSecret: true },
+      });
+      if (!profile?.webhookSecret?.trim()) {
+        return reply.code(403).send({
+          error: "Webhook not configured. Rotate your secret in settings.",
+        });
+      }
+
+      const sigHdr =
+        req.headers["x-webhook-signature"] ??
+        req.headers["x-hub-signature-256"] ??
+        "";
+      const signature = Array.isArray(sigHdr) ? sigHdr[0] ?? "" : String(sigHdr);
+      if (!signature.trim()) {
+        return reply.code(401).send({ error: "Missing x-webhook-signature header" });
+      }
+
+      const rawBody = JSON.stringify(req.body ?? {});
+      const valid = verifyWebhookSignature(profile.webhookSecret, rawBody, signature);
+      if (!valid) {
+        return reply.code(401).send({ error: "Invalid webhook signature" });
+      }
+    }
+
     // Verify the userId maps to a real user
     const { data: userRow, error: userErr } = await fastify.supabase
       .from("profiles")
@@ -129,8 +183,7 @@ export async function callWebhookRoutes(
       });
     }
 
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const parsed = parseCrmPayload(source, body, req.log);
+    const parsed = parseCrmPayload(source, req.body, req.log);
 
     const crmCallId = parsed.crmCallId;
     if (crmCallId) {

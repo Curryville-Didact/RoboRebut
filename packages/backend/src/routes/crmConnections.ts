@@ -11,6 +11,7 @@ type CrmConnectionRow = {
   created_at: string;
   instance_url?: string | null;
   dc_region?: string | null;
+  hasHubSpotAppSecret: boolean;
 };
 
 export default async function crmConnections(app: FastifyInstance): Promise<void> {
@@ -20,7 +21,9 @@ export default async function crmConnections(app: FastifyInstance): Promise<void
     handler: async (request, reply) => {
       const { data, error } = await app.supabase
         .from("crm_connections")
-        .select("id, crm_type, is_active, created_at, instance_url, dc_region")
+        .select(
+          "id, crm_type, is_active, created_at, instance_url, dc_region, hubspot_app_secret"
+        )
         .eq("user_id", request.user.id)
         .order("created_at", { ascending: false });
 
@@ -32,7 +35,35 @@ export default async function crmConnections(app: FastifyInstance): Promise<void
         });
       }
 
-      return reply.send({ ok: true, items: (data ?? []) as CrmConnectionRow[] });
+      const rows = (data ?? []).map((row) => {
+        const r = row as Record<string, unknown>;
+        const id = String(r.id ?? "");
+        const crm_type = r.crm_type as CrmType;
+        const is_active = Boolean(r.is_active);
+        const created_at = String(r.created_at ?? "");
+        const instance_url =
+          r.instance_url === undefined ? undefined : (r.instance_url as string | null);
+        const dc_region =
+          r.dc_region === undefined ? undefined : (r.dc_region as string | null);
+        const secretRaw = r.hubspot_app_secret;
+        const hasHubSpotAppSecret =
+          crm_type === "hubspot" &&
+          typeof secretRaw === "string" &&
+          secretRaw.trim().length > 0;
+
+        const item: CrmConnectionRow = {
+          id,
+          crm_type,
+          is_active,
+          created_at,
+          instance_url,
+          dc_region,
+          hasHubSpotAppSecret,
+        };
+        return item;
+      });
+
+      return reply.send({ ok: true, items: rows });
     },
   });
 
@@ -133,6 +164,7 @@ export default async function crmConnections(app: FastifyInstance): Promise<void
       api_key: string;
       instance_url?: string | null;
       dc_region?: string | null;
+      hubspotAppSecret?: string | null;
     };
   }>("/crm/connections", {
     preHandler: [app.authenticate],
@@ -147,6 +179,11 @@ export default async function crmConnections(app: FastifyInstance): Promise<void
         request.body?.dc_region === undefined || request.body?.dc_region === null
           ? null
           : String(request.body.dc_region).trim().toLowerCase() || null;
+      const hubspotAppSecretIn =
+        typeof request.body?.hubspotAppSecret === "string"
+          ? request.body.hubspotAppSecret.trim()
+          : "";
+
       if (!crm_type) {
         return sendApiError(reply, {
           status: 400,
@@ -173,16 +210,39 @@ export default async function crmConnections(app: FastifyInstance): Promise<void
         });
       }
 
+      let hubspot_app_secret: string | null | undefined = undefined;
+      if (crm_type === "hubspot") {
+        if (hubspotAppSecretIn) {
+          hubspot_app_secret = hubspotAppSecretIn;
+        } else {
+          const { data: existingHs } = await app.supabase
+            .from("crm_connections")
+            .select("hubspot_app_secret")
+            .eq("user_id", request.user.id)
+            .eq("crm_type", "hubspot")
+            .maybeSingle();
+          const prev = (existingHs as { hubspot_app_secret?: string | null } | null)
+            ?.hubspot_app_secret;
+          hubspot_app_secret =
+            typeof prev === "string" && prev.trim() ? prev : null;
+        }
+      }
+
+      const upsertPayload: Record<string, unknown> = {
+        user_id: request.user.id,
+        crm_type,
+        api_key,
+        is_active: true,
+        instance_url,
+        dc_region,
+        updated_at: new Date().toISOString(),
+      };
+      if (crm_type === "hubspot") {
+        upsertPayload.hubspot_app_secret = hubspot_app_secret ?? null;
+      }
+
       const { error } = await app.supabase.from("crm_connections").upsert(
-        {
-          user_id: request.user.id,
-          crm_type,
-          api_key,
-          is_active: true,
-          instance_url,
-          dc_region,
-          updated_at: new Date().toISOString(),
-        },
+        upsertPayload,
         { onConflict: "user_id,crm_type" }
       );
 

@@ -23,3 +23,27 @@ export function verifyWebhookSignature(
     return false;
   }
 }
+
+/** HubSpot v3: HMAC-SHA256(appSecret, method + url + body + timestamp), digest base64. */
+export function verifyHubSpotSignature(
+  appSecret: string,
+  method: string,
+  url: string,
+  rawBody: string,
+  timestamp: string,
+  signature: string
+): boolean {
+  const source = `${method}${url}${rawBody}${timestamp}`;
+  const expected = crypto
+    .createHmac("sha256", appSecret)
+    .update(source)
+    .digest("base64");
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expected),
+      Buffer.from(signature)
+    );
+  } catch {
+    return false;
+  }
+}
