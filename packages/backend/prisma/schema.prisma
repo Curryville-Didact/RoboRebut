@@ -14,6 +14,7 @@ enum UserRole {
   FOUNDER
 }
 
+// @@map("unknown") — table does not exist in Supabase
 model User {
   id          String    @id @default(cuid())
   clerkId     String    @unique
@@ -33,8 +34,11 @@ model Workspace {
   users     User[]
   documents KnowledgeDocument[]
   calls     Call[]
+
+  @@map("workspaces")
 }
 
+// @@map("unknown") — table does not exist in Supabase
 model KnowledgeDocument {
   id        String          @id @default(cuid())
   workspaceId String
@@ -46,6 +50,7 @@ model KnowledgeDocument {
   chunks    KnowledgeChunk[]
 }
 
+// @@map("unknown") — table does not exist in Supabase
 model KnowledgeChunk {
   id         String           @id @default(cuid())
   documentId String
@@ -59,6 +64,7 @@ model KnowledgeChunk {
   @@index([documentId])
 }
 
+// @@map("unknown") — table does not exist in Supabase
 model Call {
   id             String    @id @default(cuid())
   userId         String
@@ -76,6 +82,7 @@ model Call {
   summary        Summary?
 }
 
+// @@map("unknown") — table does not exist in Supabase
 model TranscriptSegment {
   id        String   @id @default(cuid())
   callId    String
@@ -88,6 +95,7 @@ model TranscriptSegment {
   @@index([callId])
 }
 
+// @@map("unknown") — table does not exist in Supabase
 model Suggestion {
   id                 String   @id @default(cuid())
   callId             String
@@ -105,6 +113,7 @@ model Suggestion {
   @@index([callId])
 }
 
+// @@map("unknown") — table does not exist in Supabase
 model Summary {
   id            String   @id @default(cuid())
   callId        String   @unique
@@ -119,6 +128,7 @@ model Summary {
 }
 
 // Phase 2.2 — Response Generation Engine
+// @@map("unknown") — table does not exist in Supabase
 model Rebuttal {
   id            String   @id @default(cuid())
   raw_input     String
