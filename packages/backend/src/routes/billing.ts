@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getFreeTierUsageSnapshot, getNormalizedUsageForUser } from "../services/freeTierUsage.js";
 import { findPolarCustomerIdByEmail, syncPolarEntitlementForUser } from "../services/polarEntitlementSync.js";
@@ -379,6 +381,32 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
     },
   });
 
+  fastify.get("/billing/status", {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
+      const userId = request.user.id;
+      const profile = await fastify.prisma.profile.findUnique({
+        where: { id: userId },
+        select: {
+          planType: true,
+          usageCount: true,
+          usageResetAt: true,
+        },
+      });
+
+      if (!profile) {
+        return reply.code(404).send({ error: "Profile not found" });
+      }
+
+      return reply.send({
+        plan: profile.planType ?? "free",
+        status: "active",
+        usageCount: profile.usageCount ?? 0,
+        usageResetAt: profile.usageResetAt ?? null,
+      });
+    },
+  });
+
   fastify.post('/billing/webhook', {
     config: { rateLimit: false },
   }, async (request, reply) => {
@@ -405,15 +433,54 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(401).send({ error: 'Invalid signature' });
     }
 
-    const event = request.body as any;
+    const event = request.body as Record<string, unknown>;
+    // Polar delivery id: prefer envelope id / webhook_id; else hash canonical body string for replay detection.
+    const eventId =
+      (typeof event.id === "string" && event.id.length > 0 ? event.id : null) ??
+      (typeof event.webhook_id === "string" && event.webhook_id.length > 0
+        ? event.webhook_id
+        : null) ??
+      createHash("sha256").update(bodyStr).digest("hex");
+    const source = "polar";
+
+    const existing = await fastify.prisma.processedWebhookEvent.findUnique({
+      where: { id: String(eventId) },
+    });
+    if (existing) {
+      fastify.log.info({ eventId: String(eventId) }, "webhook already processed, skipping");
+      return reply.code(200).send({ ok: true, skipped: true });
+    }
+
+    try {
+      await fastify.prisma.processedWebhookEvent.create({
+        data: { id: String(eventId), source },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        fastify.log.info(
+          { eventId: String(eventId) },
+          "webhook already processed (race), skipping"
+        );
+        return reply.code(200).send({ ok: true, skipped: true });
+      }
+      throw err;
+    }
+
     const eventType = event?.type as string;
     fastify.log.info({ eventType }, '[webhook] Polar event received');
 
     if (eventType === 'subscription.created' || eventType === 'subscription.updated') {
-      const sub = event?.data;
-      const customerEmail = sub?.customer?.email ?? sub?.user?.email;
-      const status = sub?.status;
-      const productName: string = (sub?.product?.name ?? '').toLowerCase();
+      const sub = event.data as Record<string, unknown> | undefined;
+      const customerEmail =
+        (sub?.customer as { email?: string } | undefined)?.email ??
+        (sub?.user as { email?: string } | undefined)?.email;
+      const status = sub?.status as string | undefined;
+      const productName: string = String(
+        (sub?.product as { name?: string } | undefined)?.name ?? ""
+      ).toLowerCase();
 
       let planType: string | null = null;
       if (status === 'active') {
@@ -433,8 +500,10 @@ export async function billingRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     if (eventType === 'subscription.canceled' || eventType === 'subscription.revoked') {
-      const sub = event?.data;
-      const customerEmail = sub?.customer?.email ?? sub?.user?.email;
+      const sub = event.data as Record<string, unknown> | undefined;
+      const customerEmail =
+        (sub?.customer as { email?: string } | undefined)?.email ??
+        (sub?.user as { email?: string } | undefined)?.email;
       if (customerEmail) {
         const { error } = await fastify.supabase
           .from('profiles')

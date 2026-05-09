@@ -48,6 +48,7 @@ import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
 import { getResponseVariantCountForPlan } from "./services/responseVariants.js";
 import { initSentry, Sentry } from "./lib/sentry.js";
+import { entitlementReconciliationQueue } from "./lib/queues.js";
 
 initSentry();
 
@@ -398,12 +399,23 @@ export async function createServer(): Promise<FastifyInstance> {
     );
   });
 
+  cron.schedule("0 2 * * *", async () => {
+    app.log.info("[cron] queuing nightly entitlement reconciliation");
+    await entitlementReconciliationQueue.add(
+      { triggeredBy: "cron", timestamp: new Date().toISOString() },
+      { jobId: `reconciliation-${new Date().toISOString().slice(0, 10)}` }
+    );
+  });
+
   if (process.env.PHRASE_AGENT_RUN_ON_BOOT === "true") {
     runPhrasePatternAgent(app.supabase).catch((e: unknown) => console.error("[PHRASE_PATTERN_AGENT_BOOT]", e));
   }
 
   await import("./workers/transcriptionWorker.js");
   await import("./workers/outboundWebhookWorker.js");
+  await import("./workers/entitlementReconciliationWorker.js").catch((err: unknown) =>
+    app.log.error({ err }, "Failed to start entitlement reconciliation worker")
+  );
 
   return app;
 }

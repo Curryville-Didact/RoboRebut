@@ -149,3 +149,12 @@ model Profile {
 
   @@map("profiles")
 }
+
+/// Polar (and other providers) webhook delivery idempotency — one row per processed event id.
+model ProcessedWebhookEvent {
+  id          String   @id
+  source      String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_webhook_events")
+}

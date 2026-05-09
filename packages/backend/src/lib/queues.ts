@@ -17,3 +17,7 @@ const queueOptions = {
 
 export const transcriptionQueue = new Bull("transcription", queueOptions);
 export const outboundWebhookQueue = new Bull("outbound-webhooks", queueOptions);
+export const entitlementReconciliationQueue = new Bull(
+  "entitlement-reconciliation",
+  queueOptions
+);
