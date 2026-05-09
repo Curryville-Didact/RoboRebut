@@ -58,6 +58,13 @@ export type Config = typeof config;
 export default config;
 
 /**
+ * Optional environment variables (not validated here):
+ * - API_URL — Public HTTPS base of this API (e.g. Railway). Required in production for HubSpot
+ *   webhook signature verification (`X-HubSpot-Signature-v3` URL must match what HubSpot posts to).
+ *   Optional for local dev unless testing HubSpot webhooks via a tunnel.
+ */
+
+/**
  * validateEnv — call this once at server startup before accepting requests.
  * Throws a single descriptive error listing ALL missing vars so you fix
  * them all at once instead of discovering them one by one.
