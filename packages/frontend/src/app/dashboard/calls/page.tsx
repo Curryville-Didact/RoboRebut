@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { API_URL } from "@/lib/env";
@@ -90,6 +90,8 @@ const VERTICAL_LABELS: Record<string, string> = {
 
 type UploadState = "idle" | "uploading" | "done" | "error";
 
+type JobState = "idle" | "uploading" | "processing" | "completed" | "failed";
+
 export default function CallsPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -102,6 +104,8 @@ export default function CallsPage() {
   const [result, setResult] = useState<TranscriptionResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobState, setJobState] = useState<JobState>("idle");
 
   const validateFile = (file: File): string | null => {
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
@@ -125,6 +129,8 @@ export default function CallsPage() {
     setSelectedFile(file);
     setResult(null);
     setUploadState("idle");
+    setJobId(null);
+    setJobState("idle");
   }, []);
 
   const handleDrop = useCallback(
@@ -146,6 +152,8 @@ export default function CallsPage() {
     if (!selectedFile) return;
     setUploadState("uploading");
     setErrorMsg(null);
+    setJobId(null);
+    setJobState("idle");
 
     try {
       const {
@@ -171,7 +179,22 @@ export default function CallsPage() {
         data = (await res.json()) as Record<string, unknown>;
       } catch {
         setErrorMsg("Invalid response from server.");
+        setJobState("failed");
         setUploadState("error");
+        return;
+      }
+
+      if (res.status === 202) {
+        const jid = data.jobId;
+        if (jid === undefined || jid === null) {
+          setErrorMsg("Invalid response from server.");
+          setJobState("failed");
+          setUploadState("error");
+          return;
+        }
+        setJobId(String(jid));
+        setJobState("processing");
+        setUploadState("idle");
         return;
       }
 
@@ -181,6 +204,7 @@ export default function CallsPage() {
             ? data.error
             : "Transcription failed. Please try again."
         );
+        setJobState("failed");
         setUploadState("error");
         return;
       }
@@ -197,7 +221,11 @@ export default function CallsPage() {
             ? (payload.detectedVertical as string | null)
             : null,
         detectedIndustry:
-          typeof payload.detectedIndustry === "string" ? payload.detectedIndustry : "Unknown",
+          typeof payload.detectedIndustry === "string"
+            ? payload.detectedIndustry
+            : typeof payload.industry === "string"
+              ? payload.industry
+              : "Unknown",
         businessName: transcribeNullableString(payload, "businessName"),
         monthlyRevenue: transcribeNullableString(payload, "monthlyRevenue"),
         painPoints: transcribeNullableString(payload, "painPoints"),
@@ -207,11 +235,89 @@ export default function CallsPage() {
         decisionMaker: transcribeNullableString(payload, "decisionMaker"),
       });
       setUploadState("done");
+      setJobState("completed");
     } catch {
       setErrorMsg("Network error. Please try again.");
+      setJobState("failed");
       setUploadState("error");
     }
   };
+
+  useEffect(() => {
+    if (!jobId || jobState !== "processing") return;
+
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+
+    const poll = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const res = await fetch(`${API_URL}/api/calls/transcription-status/${jobId}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        let data: Record<string, unknown>;
+        try {
+          data = (await res.json()) as Record<string, unknown>;
+        } catch {
+          return;
+        }
+
+        const state = typeof data.state === "string" ? data.state : "";
+
+        if (state === "completed" && data.result != null) {
+          if (intervalId !== undefined) clearInterval(intervalId);
+          const payload = data.result as Record<string, unknown>;
+          setResult({
+            ok: true,
+            transcript: String(payload.transcript ?? ""),
+            detectedObjections: Array.isArray(payload.detectedObjections)
+              ? (payload.detectedObjections as string[])
+              : [],
+            detectedVertical:
+              payload.detectedVertical === null || typeof payload.detectedVertical === "string"
+                ? (payload.detectedVertical as string | null)
+                : null,
+            detectedIndustry:
+              typeof payload.detectedIndustry === "string"
+                ? payload.detectedIndustry
+                : typeof payload.industry === "string"
+                  ? payload.industry
+                  : "Unknown",
+            businessName: transcribeNullableString(payload, "businessName"),
+            monthlyRevenue: transcribeNullableString(payload, "monthlyRevenue"),
+            painPoints: transcribeNullableString(payload, "painPoints"),
+            statedObjections: transcribeNullableString(payload, "statedObjections"),
+            trustFlags: transcribeNullableString(payload, "trustFlags"),
+            urgency: transcribeNullableString(payload, "urgency"),
+            decisionMaker: transcribeNullableString(payload, "decisionMaker"),
+          });
+          setUploadState("done");
+          setJobState("completed");
+          setJobId(null);
+        } else if (state === "failed") {
+          if (intervalId !== undefined) clearInterval(intervalId);
+          setJobState("failed");
+          setErrorMsg("Transcription failed. Please try again.");
+        }
+      } catch {
+        /* network hiccup — keep polling */
+      }
+    };
+
+    void poll();
+    intervalId = setInterval(() => {
+      void poll();
+    }, 5000);
+
+    return () => {
+      if (intervalId !== undefined) clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase client is stable enough; jobId/jobState scope the poll
+  }, [jobId, jobState]);
 
   const handleContinueToCoach = async () => {
     if (!result?.transcript?.trim()) return;
@@ -336,22 +442,49 @@ export default function CallsPage() {
           </div>
         )}
 
-        {errorMsg && (
+        {errorMsg && jobState !== "failed" && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {errorMsg}
+          </div>
+        )}
+
+        {jobState === "processing" && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-600 border-t-emerald-400" />
+            <p className="text-sm text-gray-400">Transcribing your call...</p>
+            <p className="text-xs text-gray-500">This usually takes 30–90 seconds</p>
+          </div>
+        )}
+
+        {jobState === "failed" && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <p className="text-sm text-red-400">
+              {errorMsg?.trim() ? errorMsg : "Transcription failed"}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setJobState("idle");
+                setJobId(null);
+                setErrorMsg(null);
+              }}
+              className="text-sm underline text-gray-400 hover:text-white"
+            >
+              Try again
+            </button>
           </div>
         )}
 
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            disabled={!selectedFile || uploadState === "uploading"}
+            disabled={!selectedFile || uploadState === "uploading" || jobState === "processing"}
             onClick={handleUpload}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-[44px] rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {uploadState === "uploading" ? "Transcribing…" : "Transcribe"}
+            {uploadState === "uploading" ? "Uploading…" : "Transcribe"}
           </button>
-          {selectedFile && uploadState !== "uploading" && (
+          {selectedFile && uploadState !== "uploading" && jobState !== "processing" && (
             <button
               type="button"
               className="rounded-lg border border-white/15 px-4 py-2 text-sm text-gray-300 hover:bg-white/5"
@@ -360,6 +493,8 @@ export default function CallsPage() {
                 setResult(null);
                 setUploadState("idle");
                 setErrorMsg(null);
+                setJobId(null);
+                setJobState("idle");
               }}
             >
               Clear

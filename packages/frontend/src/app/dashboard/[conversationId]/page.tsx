@@ -40,6 +40,7 @@ import {
   type TranscriptReplayLine,
 } from "@/components/transcript/TranscriptReplayModal";
 import { TranscriptPanel } from "@/components/transcript/TranscriptPanel";
+import { DashboardEmptyState } from "@/components/dashboard/DashboardEmptyState";
 import { API_URL } from "@/lib/env";
 import {
   type Conversation,
@@ -563,12 +564,26 @@ export default function ConversationDetailPage() {
             <p className="text-gray-400">Loading messages…</p>
           </div>
         ) : messages.length === 0 ? (
-          <div className="py-8 text-center">
-            <p className="text-gray-400">No messages yet.</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Type a merchant objection below — RoboRebut will coach you on how to handle it.
-            </p>
-          </div>
+          <DashboardEmptyState
+            title="No messages yet"
+            description="Ask your AI coach anything about this conversation"
+            logo={
+              <svg
+                className="h-10 w-10 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                />
+              </svg>
+            }
+          />
         ) : (
           <>
             {lastAssistantMessageIndex < 0 && intentNudgeVisible && !isPro && (
@@ -1233,7 +1248,7 @@ export default function ConversationDetailPage() {
               aria-label={micState === "listening" ? "Stop speech input" : "Start speech input"}
               aria-pressed={micState === "listening"}
               className={[
-                "flex h-9 w-9 items-center justify-center rounded-lg border text-base transition select-none",
+                "flex h-11 w-11 items-center justify-center rounded-lg border text-base transition select-none",
                 micState === "listening"
                   ? "animate-pulse border-red-400 bg-red-950/40 text-red-300"
                   : "border-white/20 text-gray-400 hover:border-white/50 hover:text-white",
@@ -1255,7 +1270,7 @@ export default function ConversationDetailPage() {
             type="button"
             onClick={() => void handleSend()}
             disabled={composerDisabled || !composer.trim()}
-            className="ml-auto rounded-lg border border-white/60 px-4 py-2 text-sm font-semibold transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+            className="ml-auto rounded-lg border border-white/60 px-4 py-3 text-sm font-semibold transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-50 sm:py-2"
           >
             {sending ? "Sending…" : "Send"}
           </button>

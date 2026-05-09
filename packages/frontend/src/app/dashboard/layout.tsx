@@ -4,6 +4,7 @@ import { BackendWebSocket } from "@/components/BackendWebSocket";
 import { MobileSidebar } from "@/components/dashboard/MobileSidebar";
 import { isFounderEmail } from "@/lib/founder";
 import DashboardViewportLock from "../../components/dashboard/DashboardViewportLock";
+import { BottomNav } from "@/components/dashboard/BottomNav";
 
 export default async function DashboardLayout({
   children,
@@ -145,11 +146,13 @@ export default async function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 h-dvh overflow-hidden">
+      <main className="flex-1 h-dvh overflow-hidden pb-16 md:pb-0">
         <div className="h-full overflow-y-auto p-8">
           {children}
         </div>
       </main>
+
+      <BottomNav />
 
       {/* Backend WS — dashboard only, not auth pages */}
       <BackendWebSocket />
