@@ -29,9 +29,9 @@ outboundWebhookQueue.process(async (job: Bull.Job<OutboundWebhookJobData>) => {
 
 outboundWebhookQueue.on("failed", (job, err: Error) => {
   console.error(
-    `[webhook-worker] job ${job?.id} failed after ${job?.attemptsMade} attempts:`,
-    err?.message
+    `[webhook-worker] job ${job?.id} permanently failed after ${job?.attemptsMade} attempts: ${err?.message}`
   );
+  // TODO Phase 9: write final failure to integration_delivery_logs
 });
 
 console.log("[webhook-worker] ready");

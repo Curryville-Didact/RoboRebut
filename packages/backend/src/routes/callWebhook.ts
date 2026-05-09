@@ -115,6 +115,33 @@ export async function callWebhookRoutes(
     const body = (req.body ?? {}) as Record<string, unknown>;
     const parsed = parseCrmPayload(source, body, req.log);
 
+    const crmCallId = parsed.crmCallId;
+    if (crmCallId) {
+      const dedupeId = `crm:${source}:${crmCallId}`;
+      const existing = await fastify.prisma.processedWebhookEvent.findUnique({
+        where: { id: dedupeId },
+      });
+      if (existing) {
+        req.log.info({ crmCallId, source }, "CRM webhook already processed, skipping");
+        return reply.code(200).send({ ok: true, skipped: true });
+      }
+
+      try {
+        await fastify.prisma.processedWebhookEvent.create({
+          data: {
+            id: dedupeId,
+            source: `crm:${source}`,
+          },
+        });
+      } catch (e: unknown) {
+        const code = typeof e === "object" && e !== null && "code" in e ? (e as { code?: string }).code : undefined;
+        if (code === "P2002") {
+          return reply.code(200).send({ ok: true, skipped: true });
+        }
+        throw e;
+      }
+    }
+
     if (!parsed.recordingUrl) {
       return sendApiError(reply, {
         status: 400,

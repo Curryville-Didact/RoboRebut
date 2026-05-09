@@ -1,8 +1,7 @@
 /**
  * Phase 12 — Outbound integration dispatcher (CRM-agnostic webhooks).
  *
- * Best-effort: must never throw into callers that handle core app flows.
- * No retries/workers in this phase; durable delivery logs are written.
+ * Logs every attempt. Throws if any endpoint delivery fails so Bull workers can retry.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -101,7 +100,7 @@ export async function dispatchOutboundIntegrationEvent(input: {
 
   const body = JSON.stringify(payload);
 
-  await Promise.all(
+  const outcomes = await Promise.all(
     eligible.map(async (e) => {
       const t0 = Date.now();
       const preview = safeJsonPreview(payload);
@@ -109,6 +108,7 @@ export async function dispatchOutboundIntegrationEvent(input: {
       let status: "delivered" | "failed" = "failed";
       let errMsg: string | null = null;
       let retryable = false;
+      let delivered = false;
 
       try {
         const controller = new AbortController();
@@ -131,6 +131,7 @@ export async function dispatchOutboundIntegrationEvent(input: {
         clearTimeout(timeout);
         httpStatus = res.status;
         status = res.ok ? "delivered" : "failed";
+        delivered = res.ok;
         retryable = !res.ok && (res.status >= 500 || res.status === 408 || res.status === 429);
         if (!res.ok) {
           errMsg = `HTTP ${res.status}`;
@@ -138,6 +139,7 @@ export async function dispatchOutboundIntegrationEvent(input: {
       } catch (err) {
         errMsg = err instanceof Error ? err.message : "delivery_error";
         retryable = true;
+        delivered = false;
       } finally {
         const durationMs = Date.now() - t0;
         const { error: logErr } = await supabase.from("integration_delivery_logs").insert({
@@ -156,8 +158,13 @@ export async function dispatchOutboundIntegrationEvent(input: {
           // Best-effort: ignore logging failures.
         }
       }
+      return delivered;
     })
   );
+
+  if (outcomes.some((ok) => !ok)) {
+    throw new Error("One or more outbound webhook deliveries failed");
+  }
 }
 
 export async function dispatchTestToEndpoint(input: {

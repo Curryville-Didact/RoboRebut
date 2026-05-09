@@ -55,6 +55,8 @@ type CrmConnection = {
   crm_type: CrmType;
   is_active: boolean;
   created_at: string;
+  instance_url?: string | null;
+  dc_region?: string | null;
 };
 
 type CrmOption = {
@@ -148,6 +150,24 @@ function CrmConnectionsPanel() {
     zoho: false,
     velocify: false,
   });
+  const [testBusy, setTestBusy] = useState<Record<CrmType, boolean>>({
+    hubspot: false,
+    gohighlevel: false,
+    salesforce: false,
+    zoho: false,
+    velocify: false,
+  });
+  const [testHint, setTestHint] = useState<
+    Record<CrmType, { ok: boolean; text: string } | null>
+  >({
+    hubspot: null,
+    gohighlevel: null,
+    salesforce: null,
+    zoho: null,
+    velocify: null,
+  });
+  const [salesforceInstanceUrl, setSalesforceInstanceUrl] = useState("");
+  const [zohoDcRegion, setZohoDcRegion] = useState<string>("com");
 
   const base = backendBaseUrl();
 
@@ -174,7 +194,12 @@ function CrmConnectionsPanel() {
       });
       setConnections([]);
     } else {
-      setConnections(Array.isArray(data?.items) ? data!.items : []);
+      const items = Array.isArray(data?.items) ? data!.items : [];
+      setConnections(items);
+      const sf = items.find((c) => c.crm_type === "salesforce");
+      setSalesforceInstanceUrl(sf?.instance_url?.trim() ?? "");
+      const zh = items.find((c) => c.crm_type === "zoho");
+      setZohoDcRegion(zh?.dc_region?.trim() || "com");
     }
     setLoading(false);
   }, [base]);
@@ -183,18 +208,71 @@ function CrmConnectionsPanel() {
     void refresh();
   }, [refresh]);
 
+  async function testConnection(crm_type: CrmType) {
+    const typedKey = (apiKeys[crm_type] ?? "").trim();
+    const connected = connectedByType.get(crm_type) != null;
+    if (!typedKey && !connected) {
+      setTestHint((p) => ({
+        ...p,
+        [crm_type]: { ok: false, text: "Enter an API key or connect first to re-validate." },
+      }));
+      return;
+    }
+
+    setTestBusy((p) => ({ ...p, [crm_type]: true }));
+    setTestHint((p) => ({ ...p, [crm_type]: null }));
+
+    const { data, error } = await authedJsonFetch<{ valid?: boolean; message?: string }>(
+      `${base}/api/crm/connections/test`,
+      {
+        method: "POST",
+        body: JSON.stringify({ crmType: crm_type, apiKey: typedKey }),
+      }
+    );
+
+    setTestBusy((p) => ({ ...p, [crm_type]: false }));
+
+    if (error) {
+      setTestHint((p) => ({ ...p, [crm_type]: { ok: false, text: error } }));
+      return;
+    }
+    const valid = Boolean(data && typeof data === "object" && (data as { valid?: boolean }).valid === true);
+    const backendMsg =
+      data && typeof data === "object" && typeof (data as { message?: string }).message === "string"
+        ? (data as { message: string }).message
+        : "";
+    setTestHint((p) => ({
+      ...p,
+      [crm_type]: {
+        ok: valid,
+        text: valid
+          ? `✓ Valid${backendMsg ? ` — ${backendMsg}` : ""}`
+          : `✗ Invalid — ${backendMsg || "check your key"}`,
+      },
+    }));
+  }
+
   async function connect(crm_type: CrmType) {
     const api_key = (apiKeys[crm_type] ?? "").trim();
-    if (!api_key) {
+    const alreadyConnected = connections.some((c) => c.crm_type === crm_type);
+    if (!api_key && !alreadyConnected) {
       setMessages((p) => ({ ...p, [crm_type]: { ok: false, text: "API key is required" } }));
       return;
     }
     setBusy((p) => ({ ...p, [crm_type]: true }));
     setMessages((p) => ({ ...p, [crm_type]: null }));
 
+    const body: Record<string, unknown> = { crm_type, api_key };
+    if (crm_type === "salesforce") {
+      body.instance_url = salesforceInstanceUrl.trim() || null;
+    }
+    if (crm_type === "zoho") {
+      body.dc_region = zohoDcRegion.trim() || "com";
+    }
+
     const { error } = await authedJsonFetch<{ ok: boolean }>(`${base}/api/crm/connections`, {
       method: "POST",
-      body: JSON.stringify({ crm_type, api_key }),
+      body: JSON.stringify(body),
     });
 
     if (error) {
@@ -280,14 +358,53 @@ function CrmConnectionsPanel() {
 
               {!connected ? (
                 <div className="space-y-2">
-                  <input
-                    value={apiKeys[crm.crm_type]}
-                    onChange={(e) =>
-                      setApiKeys((p) => ({ ...p, [crm.crm_type]: e.target.value }))
-                    }
-                    placeholder="API key"
-                    className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
-                  />
+                  <div className="flex flex-wrap items-stretch gap-2">
+                    <input
+                      value={apiKeys[crm.crm_type]}
+                      onChange={(e) =>
+                        setApiKeys((p) => ({ ...p, [crm.crm_type]: e.target.value }))
+                      }
+                      placeholder="API key"
+                      className="min-h-[44px] min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void testConnection(crm.crm_type)}
+                      disabled={
+                        testBusy[crm.crm_type] ||
+                        (crm.crm_type !== "velocify" &&
+                          !apiKeys[crm.crm_type]?.trim() &&
+                          connectedByType.get(crm.crm_type) == null)
+                      }
+                      className="min-h-[44px] shrink-0 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:opacity-60"
+                    >
+                      {testBusy[crm.crm_type] ? "Testing…" : "Test Connection"}
+                    </button>
+                  </div>
+
+                  {crm.crm_type === "salesforce" ? (
+                    <input
+                      value={salesforceInstanceUrl}
+                      onChange={(e) => setSalesforceInstanceUrl(e.target.value)}
+                      placeholder="Instance URL (optional), e.g. https://mycompany.my.salesforce.com"
+                      className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
+                    />
+                  ) : null}
+
+                  {crm.crm_type === "zoho" ? (
+                    <select
+                      className={SELECT}
+                      value={zohoDcRegion}
+                      onChange={(e) => setZohoDcRegion(e.target.value)}
+                    >
+                      <option value="com">US (zohoapis.com)</option>
+                      <option value="eu">EU</option>
+                      <option value="in">India</option>
+                      <option value="au">Australia</option>
+                      <option value="jp">Japan</option>
+                    </select>
+                  ) : null}
+
                   <button
                     type="button"
                     onClick={() => void connect(crm.crm_type)}
@@ -298,15 +415,83 @@ function CrmConnectionsPanel() {
                   </button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => void disconnect(crm.crm_type)}
-                  disabled={isBusy}
-                  className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:opacity-60"
-                >
-                  {isBusy ? "Disconnecting…" : "Disconnect"}
-                </button>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-stretch gap-2">
+                    <input
+                      value={apiKeys[crm.crm_type]}
+                      onChange={(e) =>
+                        setApiKeys((p) => ({ ...p, [crm.crm_type]: e.target.value }))
+                      }
+                      placeholder="New API key (optional)"
+                      className="min-h-[44px] min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void testConnection(crm.crm_type)}
+                      disabled={testBusy[crm.crm_type]}
+                      className="min-h-[44px] shrink-0 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:opacity-60"
+                    >
+                      {testBusy[crm.crm_type] ? "Testing…" : "Test Connection"}
+                    </button>
+                  </div>
+
+                  {crm.crm_type === "salesforce" ? (
+                    <input
+                      value={salesforceInstanceUrl}
+                      onChange={(e) => setSalesforceInstanceUrl(e.target.value)}
+                      placeholder="Instance URL (optional), e.g. https://mycompany.my.salesforce.com"
+                      className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-2 text-sm text-gray-100 outline-none focus:border-emerald-500/40"
+                    />
+                  ) : null}
+
+                  {crm.crm_type === "zoho" ? (
+                    <select
+                      className={SELECT}
+                      value={zohoDcRegion}
+                      onChange={(e) => setZohoDcRegion(e.target.value)}
+                    >
+                      <option value="com">US (zohoapis.com)</option>
+                      <option value="eu">EU</option>
+                      <option value="in">India</option>
+                      <option value="au">Australia</option>
+                      <option value="jp">Japan</option>
+                    </select>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-2">
+                    {(crm.crm_type === "salesforce" || crm.crm_type === "zoho") && (
+                      <button
+                        type="button"
+                        onClick={() => void connect(crm.crm_type)}
+                        disabled={isBusy}
+                        className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-60"
+                      >
+                        {isBusy ? "Saving…" : "Save region / URL"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void disconnect(crm.crm_type)}
+                      disabled={isBusy}
+                      className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-white/[0.1] disabled:opacity-60"
+                    >
+                      {isBusy ? "Disconnecting…" : "Disconnect"}
+                    </button>
+                  </div>
+                </div>
               )}
+
+              {testHint[crm.crm_type] ? (
+                <div
+                  className={
+                    testHint[crm.crm_type]?.ok
+                      ? "text-xs text-emerald-400/90"
+                      : "text-xs text-red-300/90"
+                  }
+                >
+                  {testHint[crm.crm_type]?.text}
+                </div>
+              ) : null}
 
               {msg ? (
                 <div className={msg.ok ? "text-xs text-emerald-400/90" : "text-xs text-red-300/90"}>

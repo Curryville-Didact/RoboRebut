@@ -2,7 +2,22 @@ type CrmConnection = {
   crm_type: string;
   api_key: string;
   is_active: boolean;
+  instance_url?: string | null;
+  dc_region?: string | null;
 };
+
+function normalizeSalesforceInstanceUrl(raw: string | null | undefined): string {
+  const fallback = "https://login.salesforce.com";
+  const t = (raw ?? "").trim();
+  if (!t) return fallback;
+  return t.replace(/\/$/, "");
+}
+
+function zohoApiBase(dc_region: string | null | undefined): string {
+  const r = (dc_region ?? "com").trim().toLowerCase();
+  if (!r || r === "com") return "https://www.zohoapis.com";
+  return `https://www.zohoapis.${r}`;
+}
 
 async function hubspotSyncContact(args: {
   apiKey: string;
@@ -162,12 +177,14 @@ async function zohoSyncContact(args: {
   email: string;
   name: string;
   phone?: string;
+  dc_region?: string | null;
 }): Promise<void> {
-  const { apiKey, email, name, phone } = args;
+  const { apiKey, email, name, phone, dc_region } = args;
   const auth = `Zoho-oauthtoken ${apiKey}`;
+  const zohoBase = zohoApiBase(dc_region);
 
   const criteria = `(Email:equals:${email})`;
-  const searchUrl = `https://www.zohoapis.com/crm/v2/Contacts/search?criteria=${encodeURIComponent(
+  const searchUrl = `${zohoBase}/crm/v2/Contacts/search?criteria=${encodeURIComponent(
     criteria
   )}`;
   const searchRes = await fetch(searchUrl, {
@@ -201,7 +218,7 @@ async function zohoSyncContact(args: {
     ? [{ id: existingId, Last_Name: name, Email: email, Phone: phone ?? "" }]
     : [{ Last_Name: name, Email: email, Phone: phone ?? "" }];
 
-  const writeRes = await fetch("https://www.zohoapis.com/crm/v2/Contacts", {
+  const writeRes = await fetch(`${zohoBase}/crm/v2/Contacts`, {
     method: existingId ? "PUT" : "POST",
     headers: {
       Authorization: auth,
@@ -221,13 +238,15 @@ async function salesforceSyncContact(args: {
   email: string;
   name: string;
   phone?: string;
+  instance_url?: string | null;
 }): Promise<void> {
-  const { apiKey, email, name, phone } = args;
+  const { apiKey, email, name, phone, instance_url } = args;
   const auth = `Bearer ${apiKey}`;
+  const instanceBase = normalizeSalesforceInstanceUrl(instance_url);
 
   const safeEmail = email.replace(/'/g, "\\'");
   const soql = `SELECT Id FROM Contact WHERE Email='${safeEmail}' LIMIT 1`;
-  const queryUrl = `https://login.salesforce.com/services/data/v57.0/query?q=${encodeURIComponent(
+  const queryUrl = `${instanceBase}/services/data/v57.0/query?q=${encodeURIComponent(
     soql
   )}`;
   const queryRes = await fetch(queryUrl, {
@@ -265,7 +284,7 @@ async function salesforceSyncContact(args: {
 
   const writeRes = existingId
     ? await fetch(
-        `https://login.salesforce.com/services/data/v57.0/sobjects/Contact/${encodeURIComponent(
+        `${instanceBase}/services/data/v57.0/sobjects/Contact/${encodeURIComponent(
           existingId
         )}`,
         {
@@ -277,7 +296,7 @@ async function salesforceSyncContact(args: {
           body: JSON.stringify(payload),
         }
       )
-    : await fetch("https://login.salesforce.com/services/data/v57.0/sobjects/Contact", {
+    : await fetch(`${instanceBase}/services/data/v57.0/sobjects/Contact`, {
         method: "POST",
         headers: {
           Authorization: auth,
@@ -333,7 +352,7 @@ export async function syncContactToCRMs(
 
     const { data, error } = await supabase
       .from("crm_connections")
-      .select("crm_type, api_key, is_active")
+      .select("crm_type, api_key, is_active, instance_url, dc_region")
       .eq("user_id", userId)
       .eq("is_active", true);
 
@@ -356,10 +375,16 @@ export async function syncContactToCRMs(
           await gohighlevelSyncContact({ apiKey, email, name, phone });
           console.info("[crmSync] gohighlevel contact synced", { userId });
         } else if (crmType === "zoho") {
-          await zohoSyncContact({ apiKey, email, name, phone });
+          await zohoSyncContact({ apiKey, email, name, phone, dc_region: c.dc_region });
           console.info("[crmSync] zoho contact synced", { userId });
         } else if (crmType === "salesforce") {
-          await salesforceSyncContact({ apiKey, email, name, phone });
+          await salesforceSyncContact({
+            apiKey,
+            email,
+            name,
+            phone,
+            instance_url: c.instance_url,
+          });
           console.info("[crmSync] salesforce contact synced", { userId });
         } else if (crmType === "velocify") {
           await velocifySyncContact({ apiKey, email, name, phone });

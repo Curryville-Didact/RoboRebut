@@ -15,10 +15,21 @@ type SyncDealBody = {
   stage?: string;
 };
 
-function getHubSpotAuthHeader(): string | null {
-  const token = process.env.HUBSPOT_API_KEY?.trim();
-  if (!token) return null;
-  return `Bearer ${token}`;
+async function hubspotBearerForUser(
+  app: FastifyInstance,
+  userId: string
+): Promise<string | null> {
+  if (!app.supabase) return null;
+  const { data, error } = await app.supabase
+    .from("crm_connections")
+    .select("api_key")
+    .eq("user_id", userId)
+    .eq("crm_type", "hubspot")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error || !data) return null;
+  const key = (data as { api_key?: string }).api_key?.trim();
+  return key ? `Bearer ${key}` : null;
 }
 
 async function readHubSpotJsonSafe(res: Response): Promise<unknown> {
@@ -36,12 +47,13 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
     {
       preHandler: [app.authenticate],
       handler: async (request, reply) => {
-      const auth = getHubSpotAuthHeader();
+      const auth = await hubspotBearerForUser(app, request.user.id);
       if (!auth) {
         return sendApiError(reply, {
-          status: 500,
-          code: "INTERNAL_ERROR",
-          message: "HUBSPOT_API_KEY not configured",
+          status: 400,
+          code: "INVALID_REQUEST",
+          message:
+            "Connect HubSpot under Settings → Integrations and save your private app access token.",
         });
       }
 
@@ -55,6 +67,13 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
           status: 400,
           code: "INVALID_REQUEST",
           message: "userId is required",
+        });
+      }
+      if (body.userId !== request.user.id) {
+        return sendApiError(reply, {
+          status: 403,
+          code: "FORBIDDEN",
+          message: "userId must match the authenticated user",
         });
       }
       if (!email) {
@@ -176,12 +195,13 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
     {
       preHandler: [app.authenticate],
       handler: async (request, reply) => {
-      const auth = getHubSpotAuthHeader();
+      const auth = await hubspotBearerForUser(app, request.user.id);
       if (!auth) {
         return sendApiError(reply, {
-          status: 500,
-          code: "INTERNAL_ERROR",
-          message: "HUBSPOT_API_KEY not configured",
+          status: 400,
+          code: "INVALID_REQUEST",
+          message:
+            "Connect HubSpot under Settings → Integrations and save your private app access token.",
         });
       }
 
@@ -286,12 +306,13 @@ export default async function hubspotRoutes(app: FastifyInstance): Promise<void>
     {
       preHandler: [app.authenticate],
       handler: async (request, reply) => {
-      const auth = getHubSpotAuthHeader();
+      const auth = await hubspotBearerForUser(app, request.user.id);
       if (!auth) {
         return sendApiError(reply, {
-          status: 500,
-          code: "INTERNAL_ERROR",
-          message: "HUBSPOT_API_KEY not configured",
+          status: 400,
+          code: "INVALID_REQUEST",
+          message:
+            "Connect HubSpot under Settings → Integrations and save your private app access token.",
         });
       }
 
