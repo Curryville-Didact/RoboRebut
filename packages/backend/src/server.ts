@@ -46,6 +46,7 @@ import crmConnections from "./routes/crmConnections.js";
 import { featureFlagRoutes } from "./routes/featureFlags.js";
 import { adminToolsRoutes } from "./routes/adminTools.js";
 import { leadsRoutes } from "./routes/leads.js";
+import { webhookRoutes } from "./routes/webhooks.js";
 import { runPhrasePatternAgent } from "./services/phrasePatternAgent.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
@@ -297,6 +298,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(featureFlagRoutes, { prefix: "/api" });
   await app.register(adminToolsRoutes, { prefix: "/api" });
   await app.register(leadsRoutes);
+  await app.register(webhookRoutes);
 
   app.get(
     "/api/me",
