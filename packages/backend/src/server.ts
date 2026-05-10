@@ -45,6 +45,7 @@ import hubspot from "./routes/hubspot.js";
 import crmConnections from "./routes/crmConnections.js";
 import { featureFlagRoutes } from "./routes/featureFlags.js";
 import { adminToolsRoutes } from "./routes/adminTools.js";
+import { leadsRoutes } from "./routes/leads.js";
 import { runPhrasePatternAgent } from "./services/phrasePatternAgent.js";
 import { generateRebuttals } from "./services/responseGenerator.js";
 import { formatResponse } from "./services/responseFormatter.js";
@@ -91,6 +92,13 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: (origin, cb) => {
       if (!origin) {
+        return cb(null, true);
+      }
+      const landingPageOrigins = new Set([
+        "https://getrebut.ai",
+        "https://www.getrebut.ai",
+      ]);
+      if (landingPageOrigins.has(origin)) {
         return cb(null, true);
       }
       if (config.corsAllowedOrigins.includes(origin)) {
@@ -288,6 +296,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(crmConnections, { prefix: "/api" });
   await app.register(featureFlagRoutes, { prefix: "/api" });
   await app.register(adminToolsRoutes, { prefix: "/api" });
+  await app.register(leadsRoutes);
 
   app.get(
     "/api/me",
