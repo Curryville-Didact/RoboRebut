@@ -8,6 +8,7 @@ import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 import { ClientContextPanel } from "@/components/ClientContextPanel";
 import { DealContextPanel } from "@/components/DealContextPanel";
 import DealAutopsyPanel from "@/components/DealAutopsyPanel";
+import BattleCardPanel from "@/components/BattleCardPanel";
 import WinStreakWidget from "@/components/WinStreakWidget";
 import { AssistantCoachMessageBody } from "@/components/AssistantCoachMessageBody";
 import { AssistantStructuredMessageBoundary } from "@/components/AssistantStructuredMessageBoundary";
@@ -107,6 +108,8 @@ export default function ConversationDetailPage() {
   const [composer, setComposer] = useState("");
   const [selectedTone, setSelectedTone] = useState("");
   const [coachReplyMode, setCoachReplyMode] = useState<CoachReplyMode>("live");
+  const battleCardIndustry =
+    conversation?.client_context?.industry?.trim() ?? null;
   /** Pre-call only; default Instant for speed (per conversation in sessionStorage). */
   const [preCallDepth, setPreCallDepth] = useState<PreCallDepth>("instant");
   const [showTranscript, setShowTranscript] = useState(false);
@@ -953,7 +956,7 @@ export default function ConversationDetailPage() {
                 }
               />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-2">
               <ClientContextPanel
                 conversationId={conversationId}
                 savedClientContext={conversation.client_context ?? null}
@@ -962,6 +965,12 @@ export default function ConversationDetailPage() {
                   setConversation((c) => (c ? { ...c, client_context } : c))
                 }
               />
+              {battleCardIndustry && (
+                <BattleCardPanel
+                  industry={battleCardIndustry}
+                  conversationId={conversationId}
+                />
+              )}
             </div>
           </div>
 
@@ -1127,6 +1136,12 @@ export default function ConversationDetailPage() {
                     setConversation((c) => (c ? { ...c, client_context } : c))
                   }
                 />
+                {battleCardIndustry && (
+                  <BattleCardPanel
+                    industry={battleCardIndustry}
+                    conversationId={conversationId}
+                  />
+                )}
               </div>
 
               <div className="space-y-2">

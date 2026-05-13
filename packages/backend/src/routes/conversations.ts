@@ -825,4 +825,60 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       });
     }
   );
+
+  // GET /api/conversations/analytics/battle-card
+  fastify.get<{
+    Querystring: { industry?: string };
+  }>(
+    "/conversations/analytics/battle-card",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const rawIndustry = (request.query.industry ?? "").trim().toLowerCase();
+      if (!rawIndustry) {
+        return reply.status(400).send({ error: "industry is required" });
+      }
+
+      // Avoid ilike metacharacter injection from query string
+      const industryPattern = `%${rawIndustry.replace(/%/g, "").replace(/_/g, "")}%`;
+
+      // ── Pull real objection data for this industry from rebuttal_events
+      // Match conversations where client_context->>industry ilike industry
+      const { data: industryConvs } = await fastify.supabase
+        .from("conversations")
+        .select("id")
+        .filter("client_context->>industry", "ilike", industryPattern);
+
+      const convIds = (industryConvs ?? []).map((r) => r.id as string);
+
+      let realObjections: { objection_type: string; count: number }[] = [];
+      let dataConversationCount = 0;
+
+      if (convIds.length > 0) {
+        dataConversationCount = convIds.length;
+
+        const { data: objEvents } = await fastify.supabase
+          .from("rebuttal_events")
+          .select("objection_type")
+          .in("conversation_id", convIds.slice(0, 500))
+          .not("objection_type", "is", null);
+
+        const counts: Record<string, number> = {};
+        for (const ev of objEvents ?? []) {
+          const t = (ev.objection_type as string | null)?.trim();
+          if (t) counts[t] = (counts[t] ?? 0) + 1;
+        }
+        realObjections = Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([objection_type, count]) => ({ objection_type, count }));
+      }
+
+      return reply.send({
+        ok: true,
+        industry: rawIndustry,
+        dataConversationCount,
+        realObjections,
+      });
+    }
+  );
 }
