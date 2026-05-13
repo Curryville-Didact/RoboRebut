@@ -343,4 +343,177 @@ export async function workspaceRoutes(
       return reply.send({ ok: true, items: conversations ?? [] });
     }
   );
+
+  // GET /api/workspaces/:id/leaderboard
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { period?: "week" | "month" | "all" };
+  }>(
+    "/workspaces/:id/leaderboard",
+    { preHandler: [fastify.authenticate] },
+    async (req, reply) => {
+      const userId = req.user.id;
+      const workspaceId = req.params.id;
+      const period = req.query.period ?? "week";
+
+      // Verify caller is a member or owner of this workspace
+      const { data: ws } = await fastify.supabase
+        .from("workspaces")
+        .select("id, owner_id")
+        .eq("id", workspaceId)
+        .maybeSingle();
+
+      if (!ws) {
+        return reply.status(404).send({ error: "Workspace not found" });
+      }
+
+      const { data: membership } = await fastify.supabase
+        .from("workspace_members")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", userId)
+        .not("accepted_at", "is", null)
+        .maybeSingle();
+
+      const isOwner = ws.owner_id === userId;
+      if (!isOwner && !membership) {
+        return reply.status(403).send({ error: "Not a member of this workspace" });
+      }
+
+      // Get all accepted member user_ids + emails from workspace_members
+      const { data: memberRows } = await fastify.supabase
+        .from("workspace_members")
+        .select("user_id, email, role, invited_email")
+        .eq("workspace_id", workspaceId)
+        .not("accepted_at", "is", null);
+
+      const members = memberRows ?? [];
+
+      // Build full list including owner
+      const ownerInMembers = members.some((m) => m.user_id === ws.owner_id);
+      const allMembers: { user_id: string; email: string | null; role: string }[] = [
+        ...(ownerInMembers ? [] : [{ user_id: ws.owner_id, email: null, role: "owner" }]),
+        ...members.map((m) => ({
+          user_id: m.user_id as string,
+          email: (m.email ?? m.invited_email ?? null) as string | null,
+          role: m.role as string,
+        })),
+      ].filter((m): m is { user_id: string; email: string | null; role: string } =>
+        typeof m.user_id === "string" && m.user_id.length > 0
+      );
+
+      const teamUserIds = allMembers.map((m) => m.user_id);
+
+      // Build date filter
+      const now = new Date();
+      const periodDays = period === "week" ? 7 : period === "month" ? 30 : null;
+      const fromDate = periodDays
+        ? new Date(now.getTime() - periodDays * 86400000)
+        : null;
+
+      // Fetch all conversations for workspace members in period
+      let convQuery = fastify.supabase
+        .from("conversations")
+        .select("user_id, outcome, deal_size")
+        .in("user_id", teamUserIds);
+
+      if (fromDate) {
+        convQuery = convQuery.gte("created_at", fromDate.toISOString());
+      }
+
+      const { data: convRows, error: convError } = await convQuery;
+
+      if (convError) {
+        req.log.error({ convError }, "Failed to fetch leaderboard conversations");
+        return reply.status(500).send({ error: "Failed to fetch leaderboard" });
+      }
+
+      // Also fetch profiles for emails of owner + members who may not have
+      // email in workspace_members
+      const missingEmailIds = allMembers
+        .filter((m) => !m.email)
+        .map((m) => m.user_id);
+
+      const profileEmailMap: Record<string, string> = {};
+      if (missingEmailIds.length > 0) {
+        const { data: profileRows } = await fastify.supabase
+          .from("profiles")
+          .select("id, email")
+          .in("id", missingEmailIds);
+        for (const p of profileRows ?? []) {
+          if (p.id && p.email) profileEmailMap[p.id] = p.email;
+        }
+      }
+
+      // Aggregate per user
+      const rows = convRows ?? [];
+
+      const leaderboard = allMembers.map((member) => {
+        const userConvs = rows.filter((r) => r.user_id === member.user_id);
+        const won = userConvs.filter((r) => r.outcome === "WON").length;
+        const lost = userConvs.filter((r) => r.outcome === "LOST").length;
+        const inProgress = userConvs.filter(
+          (r) => r.outcome === "IN_PROGRESS"
+        ).length;
+        const closed = won + lost;
+        const closeRate = closed > 0 ? Math.round((won / closed) * 1000) / 10 : 0;
+        const wonConvs = userConvs.filter(
+          (r) => r.outcome === "WON" && r.deal_size != null
+        );
+        const totalDealValue = wonConvs.reduce(
+          (s, r) => s + (r.deal_size ?? 0),
+          0
+        );
+        const displayEmail =
+          member.email ?? profileEmailMap[member.user_id] ?? "Unknown";
+        // Derive display name: part before @ sign
+        const displayName = displayEmail.includes("@")
+          ? displayEmail.split("@")[0]!
+          : displayEmail;
+
+        return {
+          userId: member.user_id,
+          displayName,
+          email: displayEmail,
+          role: member.role,
+          isCurrentUser: member.user_id === userId,
+          isOwner: member.user_id === ws.owner_id,
+          totalConversations: userConvs.length,
+          won,
+          lost,
+          inProgress,
+          closeRate,
+          totalDealValue,
+        };
+      });
+
+      // Sort: closeRate desc, then won desc, then totalConversations desc
+      leaderboard.sort((a, b) => {
+        if (b.closeRate !== a.closeRate) return b.closeRate - a.closeRate;
+        if (b.won !== a.won) return b.won - a.won;
+        return b.totalConversations - a.totalConversations;
+      });
+
+      // Add rank
+      const ranked = leaderboard.map((entry, i) => ({ ...entry, rank: i + 1 }));
+
+      // Find current user's rank and gap to #3
+      const myEntry = ranked.find((r) => r.isCurrentUser);
+      const thirdPlace = ranked[2] ?? ranked[ranked.length - 1] ?? null;
+      const gapToTop3 =
+        myEntry && thirdPlace && myEntry.rank > 3
+          ? thirdPlace.won - myEntry.won
+          : null;
+
+      return reply.send({
+        ok: true,
+        period,
+        isOwner,
+        totalReps: ranked.length,
+        leaderboard: ranked,
+        myRank: myEntry?.rank ?? null,
+        gapToTop3,
+      });
+    }
+  );
 }

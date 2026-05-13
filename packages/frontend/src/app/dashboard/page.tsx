@@ -28,6 +28,7 @@ import { isFounderEmail } from "@/lib/founder";
 import { DEMO_CONVERSATIONS } from "@/lib/demoFixtures";
 import { trackEvent } from "@/lib/trackEvent";
 import CommissionWidget from "@/components/CommissionWidget";
+import LeaderboardWidget from "@/components/LeaderboardWidget";
 
 interface Conversation {
   id: string;
@@ -338,8 +339,9 @@ async function syncEntitlement(token: string): Promise<void> {
         </div>
       </div>
 
-      <div className="px-4 pt-4 pb-0">
+      <div className="px-4 pt-4 pb-0 space-y-3">
         <CommissionWidget demoMode={demoMode} />
+        <LeaderboardWidget demoMode={demoMode} />
       </div>
 
       {error ? (
