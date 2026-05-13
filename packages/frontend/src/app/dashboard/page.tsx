@@ -27,6 +27,7 @@ import { UpgradeSuccessNotice } from "@/components/dashboard/UpgradeSuccessNotic
 import { isFounderEmail } from "@/lib/founder";
 import { DEMO_CONVERSATIONS } from "@/lib/demoFixtures";
 import { trackEvent } from "@/lib/trackEvent";
+import CommissionWidget from "@/components/CommissionWidget";
 
 interface Conversation {
   id: string;
@@ -335,6 +336,10 @@ async function syncEntitlement(token: string): Promise<void> {
             {creating ? "Creating…" : "+ New Conversation"}
           </button>
         </div>
+      </div>
+
+      <div className="px-4 pt-4 pb-0">
+        <CommissionWidget demoMode={demoMode} />
       </div>
 
       {error ? (
