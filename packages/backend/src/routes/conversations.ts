@@ -219,4 +219,168 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       return reply.status(204).send();
     },
   });
+
+  // PATCH /api/conversations/:id/outcome
+  fastify.patch<{
+    Params: { id: string };
+    Body: {
+      outcome: "WON" | "LOST" | "IN_PROGRESS";
+      dealSize?: number;
+      lostReason?: string;
+    };
+  }>("/conversations/:id/outcome", {
+    preHandler: [fastify.authenticate],
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    handler: async (request, reply) => {
+      const { id } = request.params;
+      const body = request.body ?? {};
+      const { outcome, dealSize, lostReason } = body;
+      const userId = request.user.id;
+      const requestId = (request.id as string) ?? "unknown";
+
+      if (outcome === "WON") {
+        if (!dealSize || dealSize <= 0) {
+          return reply.status(400).send({
+            error: "dealSize is required and must be > 0 when outcome is WON",
+          });
+        }
+      }
+
+      if (outcome === "LOST") {
+        if (!lostReason || lostReason.trim().length === 0) {
+          return reply.status(400).send({
+            error: "lostReason is required when outcome is LOST",
+          });
+        }
+      }
+
+      const { data: existing, error: fetchError } = await fastify.supabase
+        .from("conversations")
+        .select("id")
+        .eq("id", id)
+        .eq("user_id", userId)
+        .single();
+
+      if (fetchError || !existing) {
+        return reply.status(404).send({ error: "Conversation not found" });
+      }
+
+      const updates: Record<string, unknown> = { outcome };
+
+      if (outcome === "WON") {
+        updates.deal_size = dealSize;
+        updates.closed_at = new Date().toISOString();
+        updates.lost_reason = null;
+      } else if (outcome === "LOST") {
+        updates.lost_reason = lostReason!.trim();
+        updates.closed_at = new Date().toISOString();
+        updates.deal_size = null;
+      } else {
+        updates.closed_at = null;
+        updates.deal_size = null;
+        updates.lost_reason = null;
+      }
+
+      const { data, error } = await fastify.supabase
+        .from("conversations")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", userId)
+        .select()
+        .single();
+
+      if (error) {
+        fastify.log.error({ requestId, error }, "Failed to update outcome");
+        return reply.status(500).send({ error: "Failed to update outcome" });
+      }
+
+      fastify.log.info(
+        { requestId, conversationId: id, outcome, userId },
+        "Outcome updated"
+      );
+
+      return reply.send(data);
+    },
+  });
+
+  // GET /api/conversations/analytics/close-rate
+  fastify.get<{
+    Querystring: { period?: "week" | "month" | "all" };
+  }>("/conversations/analytics/close-rate", {
+    preHandler: [fastify.authenticate],
+    handler: async (request, reply) => {
+      const userId = request.user.id;
+      const period = request.query.period ?? "week";
+
+      const now = new Date();
+      const periodDays = period === "week" ? 7 : period === "month" ? 30 : null;
+      const prevDays = periodDays ? periodDays * 2 : null;
+
+      const buildQuery = (from: Date | null, to: Date | null) => {
+        let q = fastify.supabase
+          .from("conversations")
+          .select("outcome, deal_size")
+          .eq("user_id", userId);
+        if (from) q = q.gte("created_at", from.toISOString());
+        if (to) q = q.lt("created_at", to.toISOString());
+        return q;
+      };
+
+      const currentFrom = periodDays
+        ? new Date(now.getTime() - periodDays * 86400000)
+        : null;
+
+      const { data: rows, error } = await buildQuery(currentFrom, null);
+
+      if (error) {
+        fastify.log.error({ error }, "Failed to fetch close rate");
+        return reply.status(500).send({ error: "Failed to fetch analytics" });
+      }
+
+      const calc = (items: { outcome: string; deal_size: number | null }[]) => {
+        const won = items.filter((r) => r.outcome === "WON").length;
+        const lost = items.filter((r) => r.outcome === "LOST").length;
+        const inProgress = items.filter(
+          (r) => r.outcome === "IN_PROGRESS"
+        ).length;
+        const closed = won + lost;
+        const closeRate = closed > 0 ? (won / closed) * 100 : 0;
+        const wonRows = items.filter(
+          (r) => r.outcome === "WON" && r.deal_size != null
+        );
+        const totalDealValue = wonRows.reduce(
+          (s, r) => s + (r.deal_size ?? 0),
+          0
+        );
+        const avgDealSize =
+          wonRows.length > 0 ? totalDealValue / wonRows.length : 0;
+        return { won, lost, inProgress, closeRate, totalDealValue, avgDealSize };
+      };
+
+      const current = calc(rows ?? []);
+
+      let prevCloseRate = 0;
+
+      if (periodDays && prevDays != null && currentFrom != null) {
+        const prevFrom = new Date(now.getTime() - prevDays * 86400000);
+        const prevTo = currentFrom;
+        const { data: prevRows } = await buildQuery(prevFrom, prevTo);
+        prevCloseRate = calc(prevRows ?? []).closeRate;
+      }
+
+      return reply.send({
+        period,
+        totalConversations: (rows ?? []).length,
+        won: current.won,
+        lost: current.lost,
+        inProgress: current.inProgress,
+        closeRate: Math.round(current.closeRate * 10) / 10,
+        totalDealValue: current.totalDealValue,
+        avgDealSize: Math.round(current.avgDealSize * 100) / 100,
+        prevCloseRate: Math.round(prevCloseRate * 10) / 10,
+        closeRateDelta:
+          Math.round((current.closeRate - prevCloseRate) * 10) / 10,
+      });
+    },
+  });
 }

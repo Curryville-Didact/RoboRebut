@@ -44,6 +44,10 @@ export interface Conversation {
   client_context?: ClientContext | null;
   created_at: string;
   updated_at: string;
+  outcome?: "IN_PROGRESS" | "WON" | "LOST";
+  deal_size?: number | null;
+  closed_at?: string | null;
+  lost_reason?: string | null;
 }
 
 export interface MessageRow {

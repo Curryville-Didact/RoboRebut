@@ -139,6 +139,20 @@ export default function ConversationDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const [outcome, setOutcome] = useState<"IN_PROGRESS" | "WON" | "LOST">(
+    conversation?.outcome ?? "IN_PROGRESS"
+  );
+  const [showOutcomeModal, setShowOutcomeModal] = useState(false);
+  const [dealSize, setDealSize] = useState<string>("");
+  const [lostReason, setLostReason] = useState<string>("");
+  const [savingOutcome, setSavingOutcome] = useState(false);
+
+  useEffect(() => {
+    if (conversation?.outcome) {
+      setOutcome(conversation.outcome);
+    }
+  }, [conversation?.outcome]);
+
   const loadTranscript = useCallback(async (): Promise<{
     ok: boolean;
     lines: TranscriptReplayLine[];
@@ -336,6 +350,58 @@ export default function ConversationDetailPage() {
     monetizationUi,
     messagesLoading,
   });
+
+  const saveOutcome = async (newOutcome: "IN_PROGRESS" | "WON" | "LOST") => {
+    if (savingOutcome) return;
+    if (!conversation?.id) return;
+
+    if (newOutcome === "WON") {
+      const size = parseFloat(dealSize);
+      if (!dealSize || Number.isNaN(size) || size <= 0) {
+        alert("Enter a valid deal size to mark as Won.");
+        return;
+      }
+    }
+    if (newOutcome === "LOST") {
+      if (!lostReason.trim()) {
+        alert("Enter a loss reason to mark as Lost.");
+        return;
+      }
+    }
+
+    setSavingOutcome(true);
+    try {
+      const token = await waitForSessionAccessToken();
+      if (!token) {
+        alert("Could not save outcome. Try again.");
+        return;
+      }
+      const res = await fetch(
+        `${API_URL}/api/conversations/${conversation.id}/outcome`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            outcome: newOutcome,
+            ...(newOutcome === "WON" ? { dealSize: parseFloat(dealSize) } : {}),
+            ...(newOutcome === "LOST" ? { lostReason: lostReason.trim() } : {}),
+          }),
+        }
+      );
+      if (!res.ok) throw new Error("Failed to save outcome");
+      const updated = (await res.json()) as Conversation;
+      setConversation((c) => (c && c.id === updated.id ? { ...c, ...updated } : c));
+      setOutcome(newOutcome);
+      setShowOutcomeModal(false);
+    } catch {
+      alert("Could not save outcome. Try again.");
+    } finally {
+      setSavingOutcome(false);
+    }
+  };
 
   // --- Render: loading ---
   if (pageLoading) {
@@ -1199,6 +1265,126 @@ export default function ConversationDetailPage() {
                 }, 100);
               }}
             />
+          </div>
+        )}
+
+        {/* Win/Loss Outcome Tracker */}
+        <div className="flex items-center gap-2 border-t border-white/10 px-3 py-2">
+          <span className="mr-1 text-xs text-white/50">Deal:</span>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowOutcomeModal(true);
+              setDealSize("");
+            }}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+              outcome === "WON"
+                ? "bg-green-600 text-white"
+                : "bg-white/10 text-white/60 hover:bg-white/20"
+            }`}
+          >
+            🏆 Won
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowOutcomeModal(true);
+              setLostReason("");
+            }}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+              outcome === "LOST"
+                ? "bg-red-600 text-white"
+                : "bg-white/10 text-white/60 hover:bg-white/20"
+            }`}
+          >
+            ❌ Lost
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void saveOutcome("IN_PROGRESS")}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+              outcome === "IN_PROGRESS"
+                ? "bg-yellow-600 text-white"
+                : "bg-white/10 text-white/60 hover:bg-white/20"
+            }`}
+          >
+            ⏳ In Progress
+          </button>
+
+          {outcome === "WON" && conversation?.deal_size != null && (
+            <span className="ml-auto text-xs font-medium text-green-400">
+              ${conversation.deal_size.toLocaleString()}
+            </span>
+          )}
+          {outcome === "LOST" && conversation?.lost_reason && (
+            <span className="ml-auto max-w-[160px] truncate text-xs text-red-400">
+              {conversation.lost_reason}
+            </span>
+          )}
+        </div>
+
+        {/* Outcome Modal */}
+        {showOutcomeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="mx-4 w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1a2e] p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">
+                {outcome === "WON" || dealSize ? "Mark as Won" : "Mark as Lost"}
+              </h3>
+
+              {/* WON flow */}
+              {(outcome !== "LOST" || dealSize !== "") && (
+                <div className="mb-4">
+                  <label className="mb-1 block text-xs text-white/50">Deal Size ($)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={dealSize}
+                    onChange={(e) => setDealSize(e.target.value)}
+                    placeholder="e.g. 25000"
+                    className="w-full rounded-lg bg-white/10 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveOutcome("WON")}
+                    disabled={savingOutcome}
+                    className="mt-3 w-full rounded-lg bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-500 disabled:opacity-50"
+                  >
+                    {savingOutcome ? "Saving..." : "🏆 Mark as Won"}
+                  </button>
+                </div>
+              )}
+
+              {/* LOST flow */}
+              <div className="mb-4">
+                <label className="mb-1 block text-xs text-white/50">Loss Reason</label>
+                <input
+                  type="text"
+                  value={lostReason}
+                  onChange={(e) => setLostReason(e.target.value)}
+                  placeholder="e.g. Rate too high"
+                  className="w-full rounded-lg bg-white/10 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-red-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveOutcome("LOST")}
+                  disabled={savingOutcome}
+                  className="mt-3 w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  {savingOutcome ? "Saving..." : "❌ Mark as Lost"}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowOutcomeModal(false)}
+                className="mt-1 w-full text-xs text-white/40 hover:text-white/70"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 
