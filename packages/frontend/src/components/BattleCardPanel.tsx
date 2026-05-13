@@ -195,6 +195,7 @@ export default function BattleCardPanel({
   conversationId: string;
 }) {
   const [apiData, setApiData] = useState<BattleApiResponse | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const staticCard = findStaticCard(industry);
 
@@ -221,7 +222,21 @@ export default function BattleCardPanel({
   if (!staticCard) return null;
 
   return (
-    <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-b from-cyan-500/[0.06] to-black/30 p-4">
+    <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-b from-cyan-500/[0.06] to-black/30 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-cyan-500/10"
+      >
+        <span className="text-sm font-semibold text-white/90">
+          {expanded
+            ? `⚡ ${industry} Battle Card  ▲`
+            : `⚡ ${industry} Battle Card  ▼`}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="space-y-3 border-t border-cyan-500/15 p-4 pt-3">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-xl" aria-hidden>
           {staticCard.emoji}
@@ -296,6 +311,8 @@ export default function BattleCardPanel({
         </p>
         <p className="text-xs leading-relaxed text-violet-100/80">{staticCard.closingEdge}</p>
       </div>
+        </div>
+      )}
     </div>
   );
 }
