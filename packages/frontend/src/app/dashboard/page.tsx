@@ -31,6 +31,7 @@ import CommissionWidget from "@/components/CommissionWidget";
 import LeaderboardWidget from "@/components/LeaderboardWidget";
 import MorningBriefWidget from "@/components/MorningBriefWidget";
 import WinStreakWidget from "@/components/WinStreakWidget";
+import ShopIntelligenceReport from "@/components/ShopIntelligenceReport";
 
 interface Conversation {
   id: string;
@@ -352,6 +353,7 @@ async function syncEntitlement(token: string): Promise<void> {
         <WinStreakWidget demoMode={demoMode} />
         <CommissionWidget demoMode={demoMode} />
         <LeaderboardWidget demoMode={demoMode} />
+        <ShopIntelligenceReport demoMode={demoMode} />
       </div>
 
       {error ? (

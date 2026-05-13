@@ -516,4 +516,252 @@ export async function workspaceRoutes(
       });
     }
   );
+
+  // GET /api/workspaces/:id/shop-report
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { period?: "week" | "month" };
+  }>(
+    "/workspaces/:id/shop-report",
+    { preHandler: [fastify.authenticate] },
+    async (req, reply) => {
+      const userId = req.user.id;
+      const workspaceId = req.params.id;
+      const period = req.query.period ?? "week";
+
+      // Verify caller is owner (report is owner-only)
+      const { data: ws } = await fastify.supabase
+        .from("workspaces")
+        .select("id, owner_id, name")
+        .eq("id", workspaceId)
+        .maybeSingle();
+
+      if (!ws) {
+        return reply.status(404).send({ error: "Workspace not found" });
+      }
+      if (ws.owner_id !== userId) {
+        return reply.status(403).send({
+          error: "Shop report is only available to workspace owners",
+        });
+      }
+
+      // Get all accepted members
+      const { data: memberRows } = await fastify.supabase
+        .from("workspace_members")
+        .select("user_id, email, invited_email, role")
+        .eq("workspace_id", workspaceId)
+        .not("accepted_at", "is", null);
+
+      const members = memberRows ?? [];
+      const allMembers: {
+        user_id: string;
+        email: string | null;
+        role: string;
+      }[] = [
+        { user_id: ws.owner_id, email: null, role: "owner" },
+        ...members
+          .filter((m) => m.user_id && m.user_id !== ws.owner_id)
+          .map((m) => ({
+            user_id: m.user_id as string,
+            email: (m.email ?? m.invited_email ?? null) as string | null,
+            role: m.role as string,
+          })),
+      ];
+
+      const teamUserIds = allMembers.map((m) => m.user_id);
+
+      // Fill missing emails from profiles
+      const missingIds = allMembers
+        .filter((m) => !m.email)
+        .map((m) => m.user_id);
+      const profileEmailMap: Record<string, string> = {};
+      if (missingIds.length > 0) {
+        const { data: profiles } = await fastify.supabase
+          .from("profiles")
+          .select("id, email")
+          .in("id", missingIds);
+        for (const p of profiles ?? []) {
+          if (p.id && p.email) profileEmailMap[p.id] = p.email;
+        }
+      }
+      for (const m of allMembers) {
+        if (!m.email && profileEmailMap[m.user_id]) {
+          m.email = profileEmailMap[m.user_id]!;
+        }
+      }
+
+      // Date range
+      const now = new Date();
+      const periodDays = period === "week" ? 7 : 30;
+      const currentFrom = new Date(
+        now.getTime() - periodDays * 86400000
+      ).toISOString();
+      const prevFrom = new Date(
+        now.getTime() - periodDays * 2 * 86400000
+      ).toISOString();
+
+      // Fetch conversations for current period
+      const { data: currentConvs } = await fastify.supabase
+        .from("conversations")
+        .select("id, user_id, outcome, deal_size, lost_reason")
+        .in("user_id", teamUserIds)
+        .gte("created_at", currentFrom);
+
+      // Fetch conversations for previous period (for improvement calc)
+      const { data: prevConvs } = await fastify.supabase
+        .from("conversations")
+        .select("user_id, outcome")
+        .in("user_id", teamUserIds)
+        .gte("created_at", prevFrom)
+        .lt("created_at", currentFrom);
+
+      const rows = currentConvs ?? [];
+      const prevRows = prevConvs ?? [];
+
+      // ── Team totals ───────────────────────────────────────────────────
+      const totalAttempted = rows.length;
+      const totalWon = rows.filter((r) => r.outcome === "WON").length;
+      const totalLost = rows.filter((r) => r.outcome === "LOST").length;
+      const totalInProgress = rows.filter(
+        (r) => r.outcome === "IN_PROGRESS"
+      ).length;
+      const closed = totalWon + totalLost;
+      const teamCloseRate =
+        closed > 0 ? Math.round((totalWon / closed) * 1000) / 10 : 0;
+
+      // ── Revenue lost to objections ────────────────────────────────────
+      const wonRows = rows.filter(
+        (r) => r.outcome === "WON" && r.deal_size != null
+      );
+      const avgDealSize =
+        wonRows.length > 0
+          ? wonRows.reduce((s, r) => s + (r.deal_size ?? 0), 0) /
+            wonRows.length
+          : 0;
+      const estimatedRevenueLost = Math.round(totalLost * avgDealSize);
+
+      // ── Top objections that beat the team ────────────────────────────
+      const lostReasonCounts: Record<string, number> = {};
+      for (const r of rows.filter((r) => r.outcome === "LOST")) {
+        const reason = (r.lost_reason as string | null)?.trim().toLowerCase();
+        if (reason) {
+          lostReasonCounts[reason] =
+            (lostReasonCounts[reason] ?? 0) + 1;
+        }
+      }
+      const topObjections = Object.entries(lostReasonCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([reason, count]) => ({ reason, count }));
+
+      // ── Per-rep stats (current + previous period) ─────────────────────
+      const repStats = allMembers.map((member) => {
+        const displayEmail = member.email ?? "Unknown";
+        const displayName = displayEmail.includes("@")
+          ? displayEmail.split("@")[0]!
+          : displayEmail;
+
+        const repCurrent = rows.filter(
+          (r) => r.user_id === member.user_id
+        );
+        const repPrev = prevRows.filter(
+          (r) => r.user_id === member.user_id
+        );
+
+        const won = repCurrent.filter((r) => r.outcome === "WON").length;
+        const lost = repCurrent.filter((r) => r.outcome === "LOST").length;
+        const repClosed = won + lost;
+        const closeRate =
+          repClosed > 0
+            ? Math.round((won / repClosed) * 1000) / 10
+            : 0;
+
+        const prevWon = repPrev.filter((r) => r.outcome === "WON").length;
+        const prevLost = repPrev.filter(
+          (r) => r.outcome === "LOST"
+        ).length;
+        const prevClosed = prevWon + prevLost;
+        const prevCloseRate =
+          prevClosed > 0
+            ? Math.round((prevWon / prevClosed) * 1000) / 10
+            : 0;
+
+        const improvement =
+          Math.round((closeRate - prevCloseRate) * 10) / 10;
+
+        return {
+          userId: member.user_id,
+          displayName,
+          role: member.role,
+          totalConversations: repCurrent.length,
+          won,
+          lost,
+          closeRate,
+          prevCloseRate,
+          improvement,
+        };
+      });
+
+      // ── Most improved rep ─────────────────────────────────────────────
+      const mostImproved = [...repStats]
+        .filter((r) => r.prevCloseRate > 0 || r.closeRate > 0)
+        .sort((a, b) => b.improvement - a.improvement)[0] ?? null;
+
+      // ── Struggling rep (lowest close rate with >= 2 closed deals) ─────
+      const strugglingRep =
+        [...repStats]
+          .filter((r) => r.won + r.lost >= 2)
+          .sort((a, b) => a.closeRate - b.closeRate)[0] ?? null;
+
+      // ── Recommended training focus ────────────────────────────────────
+      // Top objection that caused the most losses
+      const trainingFocus =
+        topObjections[0]?.reason ?? null;
+
+      // ── Recommended action ────────────────────────────────────────────
+      let recommendedAction: string | null = null;
+      if (strugglingRep && trainingFocus) {
+        recommendedAction = `Coach ${strugglingRep.displayName} on "${trainingFocus}" objections this week`;
+      } else if (trainingFocus) {
+        recommendedAction = `Run a team drill on "${trainingFocus}" objections this week`;
+      } else if (mostImproved) {
+        recommendedAction = `Have ${mostImproved.displayName} share what's working with the team`;
+      }
+
+      return reply.send({
+        ok: true,
+        period,
+        workspaceName: ws.name as string,
+        generatedAt: now.toISOString(),
+        team: {
+          totalReps: allMembers.length,
+          totalAttempted,
+          totalWon,
+          totalLost,
+          totalInProgress,
+          teamCloseRate,
+          avgDealSize: Math.round(avgDealSize),
+          estimatedRevenueLost,
+        },
+        topObjections,
+        repStats,
+        mostImproved: mostImproved
+          ? {
+              displayName: mostImproved.displayName,
+              improvement: mostImproved.improvement,
+              closeRate: mostImproved.closeRate,
+            }
+          : null,
+        strugglingRep: strugglingRep
+          ? {
+              displayName: strugglingRep.displayName,
+              closeRate: strugglingRep.closeRate,
+              lost: strugglingRep.lost,
+            }
+          : null,
+        trainingFocus,
+        recommendedAction,
+      });
+    }
+  );
 }
