@@ -34,12 +34,19 @@ import {
   getNormalizedUsageForUser,
 } from "../services/freeTierUsage.js";
 import { getPlanEntitlements } from "../services/planEntitlements.js";
-import { parseCoachReplyMode } from "../types/coachReplyMode.js";
+import {
+  parseCoachReplyMode,
+  type CoachReplyMode,
+} from "../types/coachReplyMode.js";
 import { resolvePrecallDepthFromBody } from "../types/preCallDepth.js";
 import {
   getCachedRebuttal,
   setCachedRebuttal,
 } from "../services/rebuttalCache.js";
+import {
+  generateRolePlayReply,
+  type RolePlayDealType,
+} from "../services/rolePlayReply.js";
 
 const BYPASS_LIMITS = process.env.BYPASS_USAGE_LIMITS === "true";
 
@@ -119,6 +126,7 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
       precall_depth?: string;
       /** @deprecated Use `precall_depth`; still accepted for backward compatibility. */
       pre_call_depth?: string;
+      roleplay_deal_type?: string;
     };
   }>("/messages", {
     preHandler: [fastify.authenticate],
@@ -205,6 +213,73 @@ export async function messageRoutes(fastify: FastifyInstance): Promise<void> {
               request.body?.pre_call_depth
             )
           : undefined;
+
+      // ── Role Play Mode intercept ──────────────────────────────────────────
+      // Short-circuit before the full coach pipeline. The AI plays a merchant.
+      if (coachReplyMode === "roleplay") {
+        const dealTypeRaw = (request.body as Record<string, unknown>)?.roleplay_deal_type;
+        const dealType: RolePlayDealType =
+          typeof dealTypeRaw === "string" &&
+          ["mca", "loc", "term_loan", "equipment", "merchant_services", "invoice_factoring"].includes(dealTypeRaw)
+            ? (dealTypeRaw as RolePlayDealType)
+            : "mca";
+
+        const rolePlayResult = await generateRolePlayReply({
+          userMessage: content,
+          dealType,
+          priorMessages: priorMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          openAiApiKey: process.env.OPENAI_API_KEY,
+        });
+
+        if (!rolePlayResult.ok) {
+          request.log.error({ error: rolePlayResult.error }, "Role play reply failed");
+          return reply.status(500).send({ error: "Failed to generate role play reply" });
+        }
+
+        const { data: rpAiRow, error: rpAiErr } = await supabase
+          .from("messages")
+          .insert({
+            conversation_id: conversationId,
+            user_id: userId,
+            role: "ai",
+            content: rolePlayResult.text,
+            objection_type: null,
+            strategy_used: null,
+            tone_used: null,
+            structured_reply: {
+              coachReplyMode: "roleplay",
+              dealType: rolePlayResult.dealType,
+            },
+          })
+          .select()
+          .single();
+
+        if (rpAiErr || !rpAiRow) {
+          return reply.status(500).send({ error: "Failed to save role play reply" });
+        }
+
+        await supabase
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId)
+          .eq("user_id", userId);
+
+        request.log.info(
+          { conversationId, userId, dealType },
+          "roleplay_reply_generated"
+        );
+
+        return reply.status(201).send({
+          userMessage: userRow as MessageRow,
+          assistantMessage: rpAiRow as MessageRow,
+          coach_reply_mode: "roleplay" as CoachReplyMode,
+          updatedTitle: null,
+        });
+      }
+      // ── End Role Play Mode intercept ──────────────────────────────────────
 
       // Check Redis cache before hitting the LLM
       const vertical = (conv.deal_context as any)?.productType ?? "general";

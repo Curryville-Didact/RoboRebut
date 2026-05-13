@@ -56,6 +56,7 @@ export function useMessageSend(args: {
   setIntelByMessageId: Dispatch<
     SetStateAction<Record<string, AssistantMessageIntel>>
   >;
+  rolePlayDealType?: string;
 }): { handleSend: (overrideText?: string) => Promise<void> } {
   const {
     composer,
@@ -80,6 +81,7 @@ export function useMessageSend(args: {
     setMessages,
     setConversation,
     setIntelByMessageId,
+    rolePlayDealType,
   } = args;
 
   const refetchThreadMessages = useCallback(async () => {
@@ -163,6 +165,9 @@ export function useMessageSend(args: {
           coach_reply_mode: coachReplyMode,
           ...(coachReplyMode === "precall"
             ? { precall_depth: preCallDepth }
+            : {}),
+          ...(coachReplyMode === "roleplay" && rolePlayDealType
+            ? { roleplay_deal_type: rolePlayDealType }
             : {}),
           ...(selectedTone ? { tone_override: selectedTone } : {}),
         }),
@@ -379,6 +384,7 @@ export function useMessageSend(args: {
     setConversation,
     setIntelByMessageId,
     refetchThreadMessages,
+    rolePlayDealType,
   ]);
 
   return { handleSend };

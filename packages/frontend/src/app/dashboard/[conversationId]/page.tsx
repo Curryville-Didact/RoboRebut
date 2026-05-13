@@ -147,6 +147,10 @@ export default function ConversationDetailPage() {
   const [lostReason, setLostReason] = useState<string>("");
   const [savingOutcome, setSavingOutcome] = useState(false);
 
+  const [showRolePlayModal, setShowRolePlayModal] = useState(false);
+  const [rolePlayDealType, setRolePlayDealType] =
+    useState<string>("mca");
+
   useEffect(() => {
     if (conversation?.outcome) {
       setOutcome(conversation.outcome);
@@ -285,6 +289,7 @@ export default function ConversationDetailPage() {
     setMessages,
     setConversation,
     setIntelByMessageId,
+    rolePlayDealType,
   });
 
   const {
@@ -1015,6 +1020,21 @@ export default function ConversationDetailPage() {
                 >
                   Live Call
                 </button>
+                <button
+                  type="button"
+                  disabled={composerDisabled}
+                  className={[
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                    coachReplyMode === "roleplay"
+                      ? "border border-purple-500/40 bg-purple-500/15 text-purple-100"
+                      : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                  ].join(" ")}
+                  onClick={() => {
+                    setShowRolePlayModal(true);
+                  }}
+                >
+                  🎭 Role Play
+                </button>
                 {isPro && (
                   <button
                     type="button"
@@ -1175,6 +1195,21 @@ export default function ConversationDetailPage() {
                       }}
                     >
                       Live Call
+                    </button>
+                    <button
+                      type="button"
+                      disabled={composerDisabled}
+                      className={[
+                        "rounded-md px-2.5 py-1 text-xs font-medium transition disabled:opacity-50",
+                        coachReplyMode === "roleplay"
+                          ? "border border-purple-500/40 bg-purple-500/15 text-purple-100"
+                          : "border border-white/15 bg-white/5 text-gray-400 hover:bg-white/10",
+                      ].join(" ")}
+                      onClick={() => {
+                        setShowRolePlayModal(true);
+                      }}
+                    >
+                      🎭 Role Play
                     </button>
                     {isPro && (
                       <button
@@ -1388,6 +1423,73 @@ export default function ConversationDetailPage() {
           </div>
         )}
 
+        {/* Role Play Modal */}
+        {showRolePlayModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="bg-[#1a1a2e] border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4">
+              <h3 className="text-white font-semibold text-lg mb-1">
+                🎭 Role Play Mode
+              </h3>
+              <p className="text-xs text-white/40 mb-4">
+                The AI will act as a skeptical merchant. You practice your pitch.
+              </p>
+
+              <label className="text-xs text-white/50 mb-1 block">
+                Deal Type
+              </label>
+              <div className="grid grid-cols-2 gap-2 mb-5">
+                {[
+                  { value: "mca", label: "💸 MCA" },
+                  { value: "loc", label: "🏦 Line of Credit" },
+                  { value: "term_loan", label: "📋 Term Loan" },
+                  { value: "equipment", label: "🚜 Equipment" },
+                  { value: "merchant_services", label: "💳 Merchant Services" },
+                  { value: "invoice_factoring", label: "🧾 Invoice Factoring" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRolePlayDealType(opt.value)}
+                    className={`rounded-xl px-3 py-2 text-xs font-medium text-left transition-all ${
+                      rolePlayDealType === opt.value
+                        ? "bg-purple-600 text-white"
+                        : "bg-white/10 text-white/60 hover:bg-white/20"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const m: CoachReplyMode = "roleplay";
+                  setCoachReplyMode(m);
+                  if (typeof window !== "undefined") {
+                    window.sessionStorage.setItem(
+                      `roborebut:coachReplyMode:${conversationId}`,
+                      m
+                    );
+                  }
+                  setShowRolePlayModal(false);
+                }}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white rounded-lg py-2 text-sm font-medium"
+              >
+                Start Role Play
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowRolePlayModal(false)}
+                className="w-full text-white/40 text-xs hover:text-white/70 mt-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <textarea
           value={composer}
           onChange={(e) => setComposer(e.target.value)}
@@ -1397,7 +1499,13 @@ export default function ConversationDetailPage() {
               void handleSend();
             }
           }}
-          placeholder="Type a merchant objection… (Enter to send, Shift+Enter for new line)"
+          placeholder={
+            coachReplyMode === "roleplay"
+              ? "Type what you'd say to the merchant..."
+              : coachReplyMode === "precall"
+              ? "Describe the deal or account..."
+              : "Type the merchant's objection..."
+          }
           rows={3}
           disabled={composerDisabled}
           className="w-full resize-y rounded-lg border border-white/20 bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-white/50 disabled:opacity-50"
