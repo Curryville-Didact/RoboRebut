@@ -124,6 +124,7 @@ export default function ConversationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   // Mobile UX: controls are collapsible; default is collapsed (closed).
   const [controlsOpenMobile, setControlsOpenMobile] = useState(false);
+  const [controlsOpenDesktop, setControlsOpenDesktop] = useState(false);
   /** Phase 5.3 — backend-backed free tier usage; null until loaded. */
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
@@ -166,6 +167,15 @@ export default function ConversationDetailPage() {
       }
     }
   }, [conversation?.outcome]);
+
+  useEffect(() => {
+    if (
+      conversation?.deal_context != null ||
+      conversation?.client_context != null
+    ) {
+      setControlsOpenDesktop(true);
+    }
+  }, [conversation?.id]);
 
   const loadTranscript = useCallback(async (): Promise<{
     ok: boolean;
@@ -627,6 +637,9 @@ export default function ConversationDetailPage() {
 
       {/* MIDDLE SCROLL REGION (messages only) */}
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mb-3">
+          <WinStreakWidget refreshTrigger={streakRefresh} />
+        </div>
         <div className="space-y-3 rounded-xl border border-white/10 p-4">
           {callTranscriptText ? (
             <div className="rounded-lg border border-white/10 bg-white/[0.03]">
@@ -903,7 +916,7 @@ export default function ConversationDetailPage() {
       </div>
 
       {/* BOTTOM STICKY RAIL (deal/tone/mode/composer) */}
-      <div className="sticky bottom-0 z-30 shrink-0 border-t border-white/10 bg-black/80 backdrop-blur supports-[backdrop-filter]:bg-black/60">
+      <div className="sticky bottom-0 z-30 shrink-0 border-t border-white/10 bg-black/80 backdrop-blur supports-[backdrop-filter]:bg-black/60 max-h-[70vh] overflow-y-auto">
         <div className="p-4 space-y-2">
         {atUsageLimit && (
           <div className="rounded-xl border border-red-500/35 bg-gradient-to-b from-red-950/40 to-black/40 px-4 py-4">
@@ -943,36 +956,40 @@ export default function ConversationDetailPage() {
 
         {/* Desktop controls (always expanded) */}
         <div className="hidden md:block space-y-2">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
-            <div className="min-w-0 flex-1">
-              <DealContextPanel
-                conversationId={conversationId}
-                savedDealContext={conversation.deal_context}
-                getAccessToken={waitForSessionAccessToken}
-                structuredDealContextEnabled={structuredDealContextEnabled}
-                proUpgradeHref={getProCheckoutHref(returnTo)}
-                onDealContextSaved={(deal_context) =>
-                  setConversation((c) => (c ? { ...c, deal_context } : c))
-                }
-              />
-            </div>
-            <div className="min-w-0 flex-1 space-y-2">
-              <ClientContextPanel
-                conversationId={conversationId}
-                savedClientContext={conversation.client_context ?? null}
-                getAccessToken={waitForSessionAccessToken}
-                onClientContextSaved={(client_context) =>
-                  setConversation((c) => (c ? { ...c, client_context } : c))
-                }
-              />
-              {battleCardIndustry && (
-                <BattleCardPanel
-                  industry={battleCardIndustry}
+          <button
+            type="button"
+            onClick={() => setControlsOpenDesktop((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+          >
+            <span>{controlsOpenDesktop ? "▲" : "▼"}</span>
+            <span>{controlsOpenDesktop ? "Hide deal & client context" : "Add Deal Structure / Client Context"}</span>
+          </button>
+          {controlsOpenDesktop && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+              <div className="min-w-0 flex-1">
+                <DealContextPanel
                   conversationId={conversationId}
+                  savedDealContext={conversation.deal_context}
+                  getAccessToken={waitForSessionAccessToken}
+                  structuredDealContextEnabled={structuredDealContextEnabled}
+                  proUpgradeHref={getProCheckoutHref(returnTo)}
+                  onDealContextSaved={(deal_context) =>
+                    setConversation((c) => (c ? { ...c, deal_context } : c))
+                  }
                 />
-              )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <ClientContextPanel
+                  conversationId={conversationId}
+                  savedClientContext={conversation.client_context ?? null}
+                  getAccessToken={waitForSessionAccessToken}
+                  onClientContextSaved={(client_context) =>
+                    setConversation((c) => (c ? { ...c, client_context } : c))
+                  }
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -1136,12 +1153,6 @@ export default function ConversationDetailPage() {
                     setConversation((c) => (c ? { ...c, client_context } : c))
                   }
                 />
-                {battleCardIndustry && (
-                  <BattleCardPanel
-                    industry={battleCardIndustry}
-                    conversationId={conversationId}
-                  />
-                )}
               </div>
 
               <div className="space-y-2">
@@ -1333,10 +1344,15 @@ export default function ConversationDetailPage() {
           </div>
         )}
 
-        {/* Win Streak — refreshes on WON */}
-        <div className="px-3 pt-2">
-          <WinStreakWidget refreshTrigger={streakRefresh} />
-        </div>
+        {/* Battle Card — shown above outcome tracker, collapsed by default */}
+        {battleCardIndustry && (
+          <div className="px-3 pb-1">
+            <BattleCardPanel
+              industry={battleCardIndustry}
+              conversationId={conversationId}
+            />
+          </div>
+        )}
 
         {/* Win/Loss Outcome Tracker */}
         <div className="flex items-center gap-2 border-t border-white/10 px-3 py-2">
