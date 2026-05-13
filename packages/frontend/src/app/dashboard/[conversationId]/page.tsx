@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 import { ClientContextPanel } from "@/components/ClientContextPanel";
 import { DealContextPanel } from "@/components/DealContextPanel";
+import DealAutopsyPanel from "@/components/DealAutopsyPanel";
 import { AssistantCoachMessageBody } from "@/components/AssistantCoachMessageBody";
 import { AssistantStructuredMessageBoundary } from "@/components/AssistantStructuredMessageBoundary";
 import { StructuredAssistantCoachMessage } from "@/components/StructuredAssistantCoachMessage";
@@ -146,6 +147,7 @@ export default function ConversationDetailPage() {
   const [dealSize, setDealSize] = useState<string>("");
   const [lostReason, setLostReason] = useState<string>("");
   const [savingOutcome, setSavingOutcome] = useState(false);
+  const [showAutopsy, setShowAutopsy] = useState(false);
 
   const [showRolePlayModal, setShowRolePlayModal] = useState(false);
   const [rolePlayDealType, setRolePlayDealType] =
@@ -154,6 +156,9 @@ export default function ConversationDetailPage() {
   useEffect(() => {
     if (conversation?.outcome) {
       setOutcome(conversation.outcome);
+      if (conversation.outcome === "LOST") {
+        setShowAutopsy(true);
+      }
     }
   }, [conversation?.outcome]);
 
@@ -400,6 +405,11 @@ export default function ConversationDetailPage() {
       const updated = (await res.json()) as Conversation;
       setConversation((c) => (c && c.id === updated.id ? { ...c, ...updated } : c));
       setOutcome(newOutcome);
+      if (newOutcome === "LOST") {
+        setShowAutopsy(true);
+      } else {
+        setShowAutopsy(false);
+      }
       setShowOutcomeModal(false);
     } catch {
       alert("Could not save outcome. Try again.");
@@ -1360,6 +1370,21 @@ export default function ConversationDetailPage() {
             </span>
           )}
         </div>
+
+        {/* Deal Autopsy Panel */}
+        {showAutopsy &&
+          outcome === "LOST" &&
+          conversation?.id &&
+          conversation?.lost_reason && (
+            <DealAutopsyPanel
+              conversationId={conversation.id}
+              lostReason={conversation.lost_reason}
+              onPracticeNow={() => {
+                setShowRolePlayModal(true);
+                setShowAutopsy(false);
+              }}
+            />
+          )}
 
         {/* Outcome Modal */}
         {showOutcomeModal && (

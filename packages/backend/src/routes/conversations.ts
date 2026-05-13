@@ -8,6 +8,7 @@ import type { ClientContext } from "../types/clientContext.js";
 import type { DealContext } from "../types/dealContext.js";
 import { getNormalizedUsageForUser } from "../services/freeTierUsage.js";
 import { getPlanEntitlements } from "../services/planEntitlements.js";
+import { generateCoachReply } from "../services/coachChatReply.js";
 
 type ConversationRow = {
   id: string;
@@ -542,6 +543,285 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
         trendingObjection,
         weakestObjection,
         practiceRebuttal,
+      });
+    }
+  );
+
+  // POST /api/conversations/analytics/precall-brief
+  fastify.post<{
+    Body: {
+      businessName: string;
+      industry: string;
+      monthlyRevenue?: string;
+      dealType?: string;
+    };
+  }>(
+    "/conversations/analytics/precall-brief",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const {
+        businessName,
+        industry,
+        monthlyRevenue,
+        dealType = "mca",
+      } = request.body ?? {};
+
+      if (!businessName?.trim() || !industry?.trim()) {
+        return reply.status(400).send({
+          error: "businessName and industry are required",
+        });
+      }
+
+      // Build clientContext from form input
+      const clientContext: ClientContext = {
+        businessName: businessName.trim(),
+        industry: industry.trim(),
+        ...(monthlyRevenue?.trim()
+          ? { monthlyRevenueText: monthlyRevenue.trim() }
+          : {}),
+      };
+
+      // Build a realistic pre-call prompt as the "user message"
+      // This seeds the precall brief with enough context for the AI
+      const userMessage = [
+        `I'm about to call ${businessName.trim()}.`,
+        `They are in the ${industry.trim()} industry.`,
+        monthlyRevenue?.trim()
+          ? `Their monthly revenue is approximately ${monthlyRevenue.trim()}.`
+          : "",
+        `I want to pitch them a ${dealType}.`,
+        `What are the most likely objections I will face and how should I open this call?`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      try {
+        const coachReply = await generateCoachReply({
+          supabase: fastify.supabase,
+          userId,
+          conversationTitle: `Pre-call: ${businessName.trim()}`,
+          priorMessages: [],
+          userMessage,
+          dealContext: null,
+          clientContext,
+          coachReplyMode: "precall",
+          precallDepth: "deep",
+          conversationId: null,
+        });
+
+        if (!coachReply.ok) {
+          fastify.log.error(
+            { userId, error: coachReply.error },
+            "precall-brief generation failed"
+          );
+          return reply.status(500).send({
+            error: "Failed to generate pre-call brief",
+          });
+        }
+
+        return reply.send({
+          ok: true,
+          brief: coachReply.text,
+          structuredReply: coachReply.structuredReply ?? null,
+          clientContext,
+          dealType,
+        });
+      } catch (err) {
+        fastify.log.error({ err }, "precall-brief route error");
+        return reply.status(500).send({
+          error: "Failed to generate pre-call brief",
+        });
+      }
+    }
+  );
+
+  // POST /api/conversations/:id/autopsy
+  fastify.post<{
+    Params: { id: string };
+  }>(
+    "/conversations/:id/autopsy",
+    {
+      preHandler: [fastify.authenticate],
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const { id } = request.params;
+      const userId = request.user.id;
+
+      // Verify ownership + get conversation data
+      const { data: conv, error: convErr } = await fastify.supabase
+        .from("conversations")
+        .select("id, title, outcome, lost_reason, deal_context, client_context")
+        .eq("id", id)
+        .eq("user_id", userId)
+        .single();
+
+      if (convErr || !conv) {
+        return reply.status(404).send({ error: "Conversation not found" });
+      }
+
+      if (conv.outcome !== "LOST") {
+        return reply.status(400).send({
+          error: "Autopsy only available for lost deals",
+        });
+      }
+
+      const lostReason = (conv.lost_reason as string | null) ?? "unknown objection";
+
+      // ── 1. Count how many other users lost to similar objection ──────
+      // Match on rebuttal_events where objection_type fuzzy-matches lost_reason
+      // Use simple keyword overlap: split lost_reason into words, match any
+      const keywords = lostReason
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .split(/\s+/)
+        .filter((w) => w.length > 3);
+
+      // Get global loss count for this conversation's objection type
+      // Pull rebuttal_events for this conversation to find the objection_type
+      const { data: convEvents } = await fastify.supabase
+        .from("rebuttal_events")
+        .select("objection_type, objection_family")
+        .eq("conversation_id", id)
+        .not("objection_type", "is", null)
+        .limit(10);
+
+      // Most common objection_type in this conversation
+      const objTypeCounts: Record<string, number> = {};
+      for (const ev of convEvents ?? []) {
+        const t = (ev.objection_type as string | null)?.trim();
+        if (t) objTypeCounts[t] = (objTypeCounts[t] ?? 0) + 1;
+      }
+      const primaryObjType =
+        Object.entries(objTypeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+        null;
+
+      // Count global conversations marked LOST with same objection type
+      let globalLossCount = 0;
+      if (primaryObjType) {
+        const { data: lostConvs } = await fastify.supabase
+          .from("rebuttal_events")
+          .select("conversation_id")
+          .eq("objection_type", primaryObjType)
+          .not("conversation_id", "is", null);
+
+        const uniqueConvIds = new Set(
+          (lostConvs ?? []).map((r) => r.conversation_id as string)
+        );
+
+        if (uniqueConvIds.size > 0) {
+          const { data: lostMatches } = await fastify.supabase
+            .from("conversations")
+            .select("id")
+            .eq("outcome", "LOST")
+            .in("id", [...uniqueConvIds]);
+          globalLossCount = (lostMatches ?? []).length;
+        }
+      }
+
+      // ── 2. Pull winning rebuttals for this objection type ────────────
+      // Find conversations marked WON that had this objection type,
+      // pull their final_live_script examples
+      const winningRebuttals: string[] = [];
+      if (primaryObjType) {
+        const { data: wonEvents } = await fastify.supabase
+          .from("rebuttal_events")
+          .select("conversation_id, final_live_script, strategy_tag")
+          .eq("objection_type", primaryObjType)
+          .not("final_live_script", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        const wonEventConvIds = [
+          ...new Set(
+            (wonEvents ?? [])
+              .map((r) => r.conversation_id as string | null)
+              .filter((id): id is string => id !== null)
+          ),
+        ];
+
+        if (wonEventConvIds.length > 0) {
+          const { data: wonConvs } = await fastify.supabase
+            .from("conversations")
+            .select("id")
+            .eq("outcome", "WON")
+            .in("id", wonEventConvIds);
+
+          const wonConvIdSet = new Set((wonConvs ?? []).map((c) => c.id));
+
+          for (const ev of wonEvents ?? []) {
+            if (
+              wonConvIdSet.has(ev.conversation_id as string) &&
+              typeof ev.final_live_script === "string" &&
+              ev.final_live_script.trim().length > 20
+            ) {
+              winningRebuttals.push(ev.final_live_script.trim());
+              if (winningRebuttals.length >= 3) break;
+            }
+          }
+        }
+      }
+
+      // ── 3. AI coaching analysis ───────────────────────────────────────
+      // Build a focused prompt about what went wrong and how to fix it
+      const userMessage = [
+        `A sales rep just lost a deal.`,
+        `The merchant's final objection was: "${lostReason}".`,
+        primaryObjType
+          ? `This falls under the objection category: ${primaryObjType}.`
+          : "",
+        globalLossCount > 1
+          ? `This exact objection has caused ${globalLossCount} other reps to lose deals.`
+          : "",
+        winningRebuttals.length > 0
+          ? `Here are rebuttals that have worked against this objection in won deals:\n${winningRebuttals.map((r, i) => `${i + 1}. "${r}"`).join("\n")}`
+          : "",
+        `Analyze what likely went wrong and give the rep 2-3 specific, actionable coaching points to handle this objection better next time.`,
+        `Be direct and practical. Focus on what to say differently.`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      void keywords;
+
+      const coachReply = await generateCoachReply({
+        supabase: fastify.supabase,
+        userId,
+        conversationTitle: conv.title as string ?? "Lost Deal",
+        priorMessages: [],
+        userMessage,
+        dealContext: (conv.deal_context as any) ?? null,
+        clientContext: (conv.client_context as any) ?? null,
+        coachReplyMode: "precall",
+        precallDepth: "instant",
+        conversationId: null,
+      });
+
+      if (!coachReply.ok) {
+        // Return partial data even if AI fails
+        return reply.send({
+          ok: true,
+          lostReason,
+          primaryObjType,
+          globalLossCount,
+          winningRebuttals,
+          coaching: null,
+        });
+      }
+
+      fastify.log.info(
+        { userId, conversationId: id, primaryObjType },
+        "deal_autopsy_generated"
+      );
+
+      return reply.send({
+        ok: true,
+        lostReason,
+        primaryObjType,
+        globalLossCount,
+        winningRebuttals,
+        coaching: coachReply.text,
       });
     }
   );

@@ -329,6 +329,12 @@ async function syncEntitlement(token: string): Promise<void> {
               Open a thread to run Live or precall coaching.
             </p>
           </div>
+          <Link
+            href="/dashboard/precall"
+            className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
+          >
+            ⚡ Pre-Call Brief
+          </Link>
           <button
             type="button"
             onClick={() => void handleCreateConversation()}
