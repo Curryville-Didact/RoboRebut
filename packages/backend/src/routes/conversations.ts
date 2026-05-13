@@ -383,4 +383,166 @@ export async function conversationRoutes(fastify: FastifyInstance): Promise<void
       });
     },
   });
+
+  // GET /api/conversations/analytics/morning-brief
+  fastify.get(
+    "/conversations/analytics/morning-brief",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const userId = request.user.id;
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
+      const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000).toISOString();
+
+      // ── 1. Close rate this week vs last week ──────────────────────────
+      const { data: thisWeekRows } = await fastify.supabase
+        .from("conversations")
+        .select("outcome, deal_size, closed_at")
+        .eq("user_id", userId)
+        .gte("created_at", sevenDaysAgo);
+
+      const { data: lastWeekRows } = await fastify.supabase
+        .from("conversations")
+        .select("outcome, deal_size, closed_at")
+        .eq("user_id", userId)
+        .gte("created_at", fourteenDaysAgo)
+        .lt("created_at", sevenDaysAgo);
+
+      const calcRate = (rows: { outcome: string }[]) => {
+        const won = rows.filter((r) => r.outcome === "WON").length;
+        const lost = rows.filter((r) => r.outcome === "LOST").length;
+        const closed = won + lost;
+        return {
+          won,
+          lost,
+          total: rows.length,
+          closeRate: closed > 0 ? Math.round((won / closed) * 1000) / 10 : 0,
+        };
+      };
+
+      const thisWeek = calcRate(thisWeekRows ?? []);
+      const lastWeek = calcRate(lastWeekRows ?? []);
+      const closeRateDelta =
+        Math.round((thisWeek.closeRate - lastWeek.closeRate) * 10) / 10;
+
+      // ── 2. Win streak ─────────────────────────────────────────────────
+      // Walk closed conversations newest-first, count consecutive WONs
+      const { data: closedRows } = await fastify.supabase
+        .from("conversations")
+        .select("outcome, closed_at")
+        .eq("user_id", userId)
+        .in("outcome", ["WON", "LOST"])
+        .order("closed_at", { ascending: false })
+        .limit(50);
+
+      let winStreak = 0;
+      for (const row of closedRows ?? []) {
+        if (row.outcome === "WON") {
+          winStreak++;
+        } else {
+          break;
+        }
+      }
+
+      // ── 3. Trending objection (global, last 7 days) ───────────────────
+      const { data: objectionRows } = await fastify.supabase
+        .from("rebuttal_events")
+        .select("objection_type")
+        .not("objection_type", "is", null)
+        .gte("created_at", sevenDaysAgo);
+
+      const objectionCounts: Record<string, number> = {};
+      for (const row of objectionRows ?? []) {
+        const t = (row.objection_type as string | null)?.trim();
+        if (t) objectionCounts[t] = (objectionCounts[t] ?? 0) + 1;
+      }
+      const trendingObjection =
+        Object.entries(objectionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+        null;
+
+      // ── 4. Rebuttal to practice (user's weakest objection type) ───────
+      // Weakest = objection_type the user has encountered most but won
+      // least on (highest loss rate among types with >= 2 encounters)
+      const { data: userRebuttalRows } = await fastify.supabase
+        .from("rebuttal_events")
+        .select("objection_type, conversation_id")
+        .eq("user_id", userId)
+        .not("objection_type", "is", null)
+        .gte("created_at", fourteenDaysAgo);
+
+      // Map objection_type → conversation_ids
+      const objTypeConvMap: Record<string, Set<string>> = {};
+      for (const row of userRebuttalRows ?? []) {
+        const t = (row.objection_type as string | null)?.trim();
+        const cid = row.conversation_id as string | null;
+        if (t && cid) {
+          if (!objTypeConvMap[t]) objTypeConvMap[t] = new Set();
+          objTypeConvMap[t]!.add(cid);
+        }
+      }
+
+      // For each objection type, check how many linked conversations were WON
+      const convOutcomeMap: Record<string, string> = {};
+      for (const row of thisWeekRows ?? []) {
+        const r = row as { outcome: string } & Record<string, unknown>;
+        if (r["id"] && typeof r["id"] === "string") {
+          convOutcomeMap[r["id"]] = r.outcome;
+        }
+      }
+
+      // Fetch all user conversations (outcomes only) for the lookup
+      const { data: allConvRows } = await fastify.supabase
+        .from("conversations")
+        .select("id, outcome")
+        .eq("user_id", userId)
+        .gte("created_at", fourteenDaysAgo);
+
+      for (const row of allConvRows ?? []) {
+        const r = row as { id: string; outcome: string };
+        convOutcomeMap[r.id] = r.outcome;
+      }
+
+      let weakestObjection: string | null = null;
+      let worstWinRate = Infinity;
+
+      for (const [objType, convIds] of Object.entries(objTypeConvMap)) {
+        if (convIds.size < 2) continue;
+        const wonCount = [...convIds].filter(
+          (cid) => convOutcomeMap[cid] === "WON"
+        ).length;
+        const winRate = wonCount / convIds.size;
+        if (winRate < worstWinRate) {
+          worstWinRate = winRate;
+          weakestObjection = objType;
+        }
+      }
+
+      // ── 5. One rebuttal tip for the weakest objection ─────────────────
+      // Pull the most-used phrase for that objection type from phrase_patterns
+      let practiceRebuttal: string | null = null;
+      if (weakestObjection) {
+        const { data: phraseRows } = await fastify.supabase
+          .from("phrase_patterns")
+          .select("phrase, occurrences")
+          .order("occurrences", { ascending: false })
+          .limit(1);
+        practiceRebuttal = (phraseRows?.[0]?.phrase as string | null) ?? null;
+      }
+
+      return reply.send({
+        generatedAt: now.toISOString(),
+        closeRate: {
+          thisWeek: thisWeek.closeRate,
+          lastWeek: lastWeek.closeRate,
+          delta: closeRateDelta,
+          thisWeekWon: thisWeek.won,
+          thisWeekTotal: thisWeek.total,
+        },
+        winStreak,
+        trendingObjection,
+        weakestObjection,
+        practiceRebuttal,
+      });
+    }
+  );
 }
