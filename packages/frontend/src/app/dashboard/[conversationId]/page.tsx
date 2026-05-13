@@ -8,6 +8,7 @@ import { useSpeechRecognition } from "@/lib/useSpeechRecognition";
 import { ClientContextPanel } from "@/components/ClientContextPanel";
 import { DealContextPanel } from "@/components/DealContextPanel";
 import DealAutopsyPanel from "@/components/DealAutopsyPanel";
+import WinStreakWidget from "@/components/WinStreakWidget";
 import { AssistantCoachMessageBody } from "@/components/AssistantCoachMessageBody";
 import { AssistantStructuredMessageBoundary } from "@/components/AssistantStructuredMessageBoundary";
 import { StructuredAssistantCoachMessage } from "@/components/StructuredAssistantCoachMessage";
@@ -148,6 +149,7 @@ export default function ConversationDetailPage() {
   const [lostReason, setLostReason] = useState<string>("");
   const [savingOutcome, setSavingOutcome] = useState(false);
   const [showAutopsy, setShowAutopsy] = useState(false);
+  const [streakRefresh, setStreakRefresh] = useState(0);
 
   const [showRolePlayModal, setShowRolePlayModal] = useState(false);
   const [rolePlayDealType, setRolePlayDealType] =
@@ -409,6 +411,9 @@ export default function ConversationDetailPage() {
         setShowAutopsy(true);
       } else {
         setShowAutopsy(false);
+      }
+      if (newOutcome === "WON") {
+        setStreakRefresh((n) => n + 1);
       }
       setShowOutcomeModal(false);
     } catch {
@@ -1312,6 +1317,11 @@ export default function ConversationDetailPage() {
             />
           </div>
         )}
+
+        {/* Win Streak — refreshes on WON */}
+        <div className="px-3 pt-2">
+          <WinStreakWidget refreshTrigger={streakRefresh} />
+        </div>
 
         {/* Win/Loss Outcome Tracker */}
         <div className="flex items-center gap-2 border-t border-white/10 px-3 py-2">
