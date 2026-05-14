@@ -96,6 +96,8 @@ export async function createServer(): Promise<FastifyInstance> {
         return cb(null, true);
       }
       const landingPageOrigins = new Set([
+        "https://didactcapital.fund",
+        "https://www.didactcapital.fund",
         "https://getrebut.ai",
         "https://www.getrebut.ai",
       ]);
