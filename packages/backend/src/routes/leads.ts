@@ -61,7 +61,8 @@ export async function leadsRoutes(app: FastifyInstance): Promise<void> {
       const industry = trimOptional(raw_industry);
       const business_type = trimOptional(raw_business_type);
 
-      if (!full_name || !work_email || !phone_number) {
+      const isContactInquiry = lead_type === 'contact_inquiry';
+      if (!full_name || !work_email || (!phone_number && !isContactInquiry)) {
         return reply.status(400).send({ error: "Missing required fields" });
       }
 
