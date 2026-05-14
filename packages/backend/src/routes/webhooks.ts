@@ -25,9 +25,10 @@ export async function webhookRoutes(app: FastifyInstance) {
       created_at: record.created_at
     })
 
-    if (process.env.GTM_AGENT_WEBHOOK_URL) {
+    const gtmUrl = process.env.GTM_AGENT_WEBHOOK_URL?.trim()
+    if (gtmUrl && gtmUrl !== 'placeholder' && gtmUrl.startsWith('http')) {
       try {
-        await fetch(process.env.GTM_AGENT_WEBHOOK_URL, {
+        await fetch(gtmUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
