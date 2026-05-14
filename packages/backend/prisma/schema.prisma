@@ -179,3 +179,30 @@ model FeatureFlag {
 
   @@map("feature_flags")
 }
+
+model Lead {
+  id                String    @id @default(uuid())
+  full_name         String?
+  company           String?
+  work_email        String?
+  phone_number      String?
+  team_type         String?
+  team_size         String?
+  message           String?
+  sms_consent       Boolean?
+  source            String?
+  status            String?
+  notified_at       DateTime?
+  utm_source        String?
+  utm_medium        String?
+  utm_campaign      String?
+  created_at        DateTime  @default(now())
+  lead_type         String?
+  monthly_revenue   String?
+  time_in_business  String?
+  funding_amount    String?
+  industry          String?
+  business_type     String?
+
+  @@map("leads")
+}
