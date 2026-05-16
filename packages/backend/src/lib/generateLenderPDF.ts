@@ -146,7 +146,11 @@ export async function generateLenderPDF(
 
   const fmt      = (v: any) => (v === null || v === undefined || v === '') ? '—' : String(v);
   const fmtBool  = (v: any) => v === true  || v === 'true'  ? 'Yes' : v === false || v === 'false' ? 'No' : '—';
-  const fmtMoney = (v: any) => v ? `$${Number(v).toLocaleString()}` : '—';
+  const fmtMoney = (v: any) => {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(String(v).replace(/[^0-9.-]/g, ''));
+    return isNaN(n) ? fmt(v) : `$${n.toLocaleString()}`;
+  };
 
   function addSection(title: string) {
     ensureSpace(38);
@@ -284,6 +288,42 @@ export async function generateLenderPDF(
   addRow('Signed By',  fmt(app.signature_name));
   addRow('Agreed',     fmtBool(app.signature_agreed), true);
   addRow('Timestamp',  app.signature_timestamp ? new Date(app.signature_timestamp).toLocaleString() : '—');
+
+  // Legal disclosure block below signature
+  y -= 10;
+  ensureSpace(80);
+
+  currentPage.drawRectangle({
+    x: MARGIN, y: y - 72,
+    width: PAGE_W - MARGIN * 2, height: 76,
+    color: LGRAY,
+  });
+
+  currentPage.drawText('AUTHORIZATION & DISCLOSURE', {
+    x: MARGIN + 8, y: y - 14,
+    size: 8, font: boldFont, color: NAVY,
+  });
+
+  const disclosureLines = [
+    'By submitting this application, the applicant(s) named above authorized Didact Capital LLC and its',
+    'funding partners to obtain business and personal credit reports, verify all information provided,',
+    'and share this application with prospective lenders and capital providers for the purpose of',
+    'evaluating and funding a business cash advance or loan. The applicant certifies that all information',
+    'contained in this application is true, accurate, and complete to the best of their knowledge.',
+    'Electronic signature constitutes a legally binding agreement under the E-SIGN Act (15 U.S.C. § 7001).',
+  ];
+
+  disclosureLines.forEach((line, i) => {
+    currentPage.drawText(line, {
+      x: MARGIN + 8,
+      y: y - 26 - (i * 10),
+      size: 6.5,
+      font: regFont,
+      color: DGRAY,
+    });
+  });
+
+  y -= 82;
 
   const totalPages = pages.length;
   for (const { page, pageNum } of pages) {
