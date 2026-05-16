@@ -8,61 +8,56 @@ const STORAGE_BUCKET = "didact-documents";
  * `document_urls`, boolean flags below, and server-managed timestamps).
  * Keep in sync with Supabase.
  */
-const APPLICATION_TEXT_COLUMNS = [
-  "lead_id",
-  "business_legal_name",
-  "business_dba",
-  "business_phone",
-  "business_email",
-  "business_address",
-  "business_city",
-  "business_state",
-  "business_zip",
-  "entity_type",
-  "business_start_date",
-  "ein",
-  "business_description",
-  "industry_sic",
-  "amount_requested",
-  "funds_needed_timeline",
-  "use_of_funds",
-  "gross_annual_sales",
-  "gross_monthly_sales",
-  "monthly_cc_volume",
-  "existing_advance_balance",
-  "owner_first_name",
-  "owner_last_name",
-  "owner_title",
-  "owner_percentage",
-  "owner_address",
-  "owner_city",
-  "owner_state",
-  "owner_zip",
-  "owner_dob",
-  "owner_ssn_last4",
-  "owner_phone",
-  "coowner_first_name",
-  "coowner_last_name",
-  "coowner_title",
-  "coowner_percentage",
-  "coowner_address",
-  "coowner_dob",
-  "coowner_ssn_last4",
-  "signature_name",
-  "status",
-] as const;
-
-const BOOLEAN_FORM_FIELDS = [
-  "home_based",
-  "open_judgements",
-  "open_bankruptcies",
-  "existing_advance",
-  "signature_agreed",
-] as const;
+const FIELD_MAP: Record<string, string> = {
+  businessLegalName: "business_legal_name",
+  businessDba: "business_dba",
+  businessPhone: "business_phone",
+  businessEmail: "business_email",
+  physicalAddress: "business_address",
+  physicalCity: "business_city",
+  physicalState: "business_state",
+  physicalZip: "business_zip",
+  legalEntity: "entity_type",
+  businessStartDate: "business_start_date",
+  taxId: "ein",
+  homeBased: "home_based",
+  openJudgements: "open_judgements",
+  openBankruptcies: "open_bankruptcies",
+  industryType: "industry_sic",
+  businessDescription: "business_description",
+  amountRequested: "amount_requested",
+  fundsNeeded: "funds_needed_timeline",
+  grossAnnualSales: "gross_annual_sales",
+  grossMonthlySales: "gross_monthly_sales",
+  monthlyCreditCardVolume: "monthly_cc_volume",
+  hasCashAdvance: "existing_advance",
+  cashAdvanceBalance: "existing_advance_balance",
+  useOfFunds: "use_of_funds",
+  ownerFirstName: "owner_first_name",
+  ownerLastName: "owner_last_name",
+  ownerTitle: "owner_title",
+  ownershipPct: "owner_percentage",
+  ownerAddress: "owner_address",
+  ownerCity: "owner_city",
+  ownerState: "owner_state",
+  ownerZip: "owner_zip",
+  ownerDob: "owner_dob",
+  ownerSsnLast4: "owner_ssn_last4",
+  ownerMobilePhone: "owner_phone",
+  coFirstName: "coowner_first_name",
+  coLastName: "coowner_last_name",
+  coTitle: "coowner_title",
+  coOwnershipPct: "coowner_percentage",
+  coAddress: "coowner_address",
+  coDob: "coowner_dob",
+  coSsnLast4: "coowner_ssn_last4",
+  signatureName: "signature_name",
+  authAgreed: "signature_agreed",
+};
 
 const ALLOWED_MULTIPART_FIELDS = new Set<string>([
-  ...APPLICATION_TEXT_COLUMNS,
-  ...BOOLEAN_FORM_FIELDS,
+  "lead_id",
+  ...Object.keys(FIELD_MAP),
 ]);
 
 function stringifyPartValue(value: unknown): string {
@@ -163,31 +158,24 @@ export async function applicationsRoutes(app: FastifyInstance): Promise<void> {
         document_urls: documentUrls,
       };
 
-      for (const col of APPLICATION_TEXT_COLUMNS) {
-        if (col === "lead_id") {
-          continue;
-        }
-        if (fieldValues[col] === undefined) {
-          continue;
-        }
-        const trimmed = fieldValues[col].trim();
-        insertRow[col] = trimmed === "" ? null : trimmed;
+      for (const [formKey, dbCol] of Object.entries(FIELD_MAP)) {
+        if (fieldValues[formKey] === undefined) continue;
+        const trimmed = fieldValues[formKey].trim();
+        insertRow[dbCol] = trimmed === "" ? null : trimmed;
       }
 
-      if (fieldValues.home_based) {
-        insertRow.home_based = fieldValues.home_based === 'true';
-      }
-      if (fieldValues.open_judgements) {
-        insertRow.open_judgements = fieldValues.open_judgements === 'true';
-      }
-      if (fieldValues.open_bankruptcies) {
-        insertRow.open_bankruptcies = fieldValues.open_bankruptcies === 'true';
-      }
-      if (fieldValues.existing_advance) {
-        insertRow.existing_advance = fieldValues.existing_advance === 'true';
-      }
-      if (fieldValues.signature_agreed) {
-        insertRow.signature_agreed = fieldValues.signature_agreed === 'true';
+      // Also handle boolean fields
+      const BOOLEAN_MAP: Record<string, string> = {
+        homeBased: "home_based",
+        openJudgements: "open_judgements",
+        openBankruptcies: "open_bankruptcies",
+        hasCashAdvance: "existing_advance",
+        authAgreed: "signature_agreed",
+      };
+      for (const [formKey, dbCol] of Object.entries(BOOLEAN_MAP)) {
+        if (fieldValues[formKey] !== undefined) {
+          insertRow[dbCol] = fieldValues[formKey] === "true";
+        }
       }
 
       const { data, error } = await app.supabase
