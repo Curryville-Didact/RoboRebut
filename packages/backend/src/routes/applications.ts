@@ -86,6 +86,26 @@ type QueuedFile = {
 };
 
 export async function applicationsRoutes(app: FastifyInstance): Promise<void> {
+  app.get("/api/applications", async (request, reply) => {
+    try {
+      if (!app.supabase) {
+        return reply.status(503).send({ error: "Supabase unavailable" });
+      }
+      const { data, error } = await app.supabase
+        .from("applications")
+        .select("id, business_legal_name, business_dba, owner_first_name, owner_last_name, business_phone, amount_requested, gross_monthly_sales, industry_sic, entity_type, status, created_at")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        return reply.status(500).send({ error: error.message });
+      }
+      return reply.send({ applications: data ?? [] });
+    } catch (err) {
+      console.error("[applications] list error:", err);
+      return reply.status(500).send({ error: "Failed to fetch applications" });
+    }
+  });
+
   app.post("/api/applications", async (request, reply) => {
     if (!app.supabase) {
       return reply.status(503).send({ error: "Application capture unavailable" });
