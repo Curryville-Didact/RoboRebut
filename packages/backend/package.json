@@ -30,6 +30,7 @@
     "fastify-plugin": "^5.1.0",
     "ioredis": "^5.4.1",
     "node-cron": "^3.0.3",
+    "pdf-lib": "^1.17.1",
     "pino": "^9.5.0"
   },
   "devDependencies": {

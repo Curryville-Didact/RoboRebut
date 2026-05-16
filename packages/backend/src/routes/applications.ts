@@ -195,4 +195,51 @@ export async function applicationsRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(500).send({ error: "Failed to save application" });
     }
   });
+
+  app.get("/api/applications/:id/export", async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+
+      if (!app.supabase) {
+        return reply.status(503).send({ error: "Supabase unavailable" });
+      }
+
+      const { data: application, error: appError } = await app.supabase
+        .from("applications")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (appError || !application) {
+        return reply.status(404).send({ error: "Application not found" });
+      }
+
+      let lead = {};
+      if (application.lead_id) {
+        const { data: leadData } = await app.supabase
+          .from("leads")
+          .select("*")
+          .eq("id", application.lead_id)
+          .single();
+        if (leadData) lead = leadData;
+      }
+
+      const { generateLenderPDF } = await import("../lib/generateLenderPDF.js");
+      const pdfBytes = await generateLenderPDF(application, lead);
+
+      const safeName = (application.business_legal_name ?? id)
+        .replace(/[^a-zA-Z0-9]/g, "-")
+        .slice(0, 50);
+      const filename = `didact-${safeName}.pdf`;
+
+      return reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", `attachment; filename="${filename}"`)
+        .send(Buffer.from(pdfBytes));
+
+    } catch (err) {
+      console.error("[applications] export error:", err);
+      return reply.status(500).send({ error: "Failed to generate PDF" });
+    }
+  });
 }
