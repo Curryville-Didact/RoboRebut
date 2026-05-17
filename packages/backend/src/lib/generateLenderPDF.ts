@@ -101,7 +101,7 @@ function drawWatermark(page: PDFPage, font: any) {
       size,
       font,
       color: WMARK,
-      opacity: 0.35,
+      opacity: 0.15,
       rotate: degrees(45),
     });
   });
@@ -351,10 +351,62 @@ export async function generateLenderPDF(
 
   const fmt      = (v: any) => (v === null || v === undefined || v === '') ? '—' : String(v);
   const fmtBool  = (v: any) => v === true  || v === 'true'  ? 'Yes' : v === false || v === 'false' ? 'No' : '—';
+  const RANGE_MONEY: Record<string, string> = {
+    '10k-25k': '$10,000 – $25,000',
+    '25k-50k': '$25,000 – $50,000',
+    '100k-250k': '$100,000 – $250,000',
+    '250k-500k': '$250,000 – $500,000',
+    '500k-1m': '$500,000 – $1,000,000',
+    '1m+': '$1,000,000+',
+  };
+
+  const parseMoneyToken = (token: string): number | null => {
+    const t = token.trim().toLowerCase().replace(/,/g, '');
+    if (!t) return null;
+    const body = t.endsWith('+') ? t.slice(0, -1) : t;
+    if (body.endsWith('m')) {
+      const n = parseFloat(body.slice(0, -1));
+      return Number.isNaN(n) ? null : n * 1_000_000;
+    }
+    if (body.endsWith('k')) {
+      const n = parseFloat(body.slice(0, -1));
+      return Number.isNaN(n) ? null : n * 1_000;
+    }
+    const n = Number(body);
+    return Number.isNaN(n) ? null : n;
+  };
+
   const fmtMoney = (v: any) => {
     if (v === null || v === undefined || v === '') return '—';
-    const n = Number(String(v).replace(/[^0-9.-]/g, ''));
-    return isNaN(n) ? fmt(v) : `$${n.toLocaleString()}`;
+    if (typeof v === 'number' && !Number.isNaN(v)) {
+      return `$${v.toLocaleString()}`;
+    }
+
+    const raw = String(v).trim();
+    const key = raw.toLowerCase();
+
+    if (RANGE_MONEY[key]) return RANGE_MONEY[key];
+
+    if (/^\d+([.,]\d+)?$/.test(raw.replace(/,/g, ''))) {
+      const n = Number(raw.replace(/,/g, ''));
+      if (!Number.isNaN(n)) return `$${n.toLocaleString()}`;
+    }
+
+    if (key.includes('-')) {
+      const [lowTok, highTok] = key.split('-');
+      const low = parseMoneyToken(lowTok);
+      const high = parseMoneyToken(highTok);
+      if (low != null && high != null) {
+        return `$${low.toLocaleString()} – $${high.toLocaleString()}`;
+      }
+    }
+
+    if (key.endsWith('+')) {
+      const low = parseMoneyToken(key);
+      if (low != null) return `$${low.toLocaleString()}+`;
+    }
+
+    return raw;
   };
 
   drawCoverPage(doc, app, pages, boldFont, regFont, fmt, fmtMoney);
