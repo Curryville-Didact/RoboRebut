@@ -59,4 +59,53 @@ export async function webhookRoutes(app: FastifyInstance) {
 
     return reply.status(200).send({ received: true })
   })
+
+  // Twilio SMS inbound webhook
+  app.post('/api/webhooks/twilio/sms', async (request, reply) => {
+    const body = request.body as any
+    const from = body.From as string
+    const msgBody = (body.Body as string || '').trim().toUpperCase()
+
+    console.log(`Inbound SMS from ${from}: ${msgBody}`)
+
+    const { createClient } = await import('@supabase/supabase-js')
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    if (msgBody === 'STOP') {
+      await supabase
+        .from('leads')
+        .update({ sms_opt_out: true, sms_opt_out_at: new Date().toISOString() })
+        .eq('phone', from)
+
+      await supabase.from('outreach_log').insert({
+        email_type: 'sms_stop',
+        to_email: from,
+        status: 'opt_out',
+        notes: 'Merchant replied STOP',
+        sent_at: new Date().toISOString()
+      })
+
+      console.log(`Merchant ${from} opted out via STOP`)
+    } else if (msgBody === 'HELP') {
+      // Twilio auto-handles HELP replies per A2P compliance
+      console.log(`Merchant ${from} requested HELP`)
+    } else {
+      await supabase.from('outreach_log').insert({
+        email_type: 'sms_reply',
+        to_email: from,
+        status: 'received',
+        notes: `Merchant replied: ${body.Body}`,
+        sent_at: new Date().toISOString()
+      })
+
+      console.log(`Merchant reply logged from ${from}`)
+    }
+
+    // Twilio expects TwiML response
+    reply.header('Content-Type', 'text/xml')
+    return reply.send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`)
+  })
 }
