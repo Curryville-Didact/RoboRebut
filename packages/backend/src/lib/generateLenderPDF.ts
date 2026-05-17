@@ -5,6 +5,7 @@ import {
   PDFArray,
   PDFString,
   rgb,
+  degrees,
   StandardFonts,
 } from 'pdf-lib';
 import fs from 'fs';
@@ -16,6 +17,9 @@ const WHITE = rgb(1, 1, 1);
 const LGRAY = rgb(0.92, 0.93, 0.95);
 const DGRAY = rgb(0.30, 0.32, 0.38);
 const LINK  = rgb(0.10, 0.55, 0.85);
+const WMARK = rgb(0.85, 0.85, 0.85);
+const BOX_BORDER = rgb(0.75, 0.76, 0.78);
+const BOX_FILL = rgb(0.97, 0.97, 0.98);
 
 const PAGE_W = 612;
 const PAGE_H = 792;
@@ -55,6 +59,232 @@ function addLinkAnnotation(
       doc.context.obj([doc.context.register(annot)]),
     );
   }
+}
+
+function wrapText(
+  text: string,
+  maxWidth: number,
+  font: { widthOfTextAtSize: (t: string, s: number) => number },
+  size: number,
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(test, size) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function drawWatermark(page: PDFPage, font: any) {
+  const lines = [
+    'CONFIDENTIAL — Submitted by Didact Capital',
+    'curry@didactcapital.fund | Unauthorized distribution prohibited',
+  ];
+  const cx = PAGE_W / 2;
+  const cy = PAGE_H / 2;
+  const size = 18;
+  const lineGap = 28;
+
+  lines.forEach((line, i) => {
+    const textWidth = font.widthOfTextAtSize(line, size);
+    page.drawText(line, {
+      x: cx - textWidth / 2,
+      y: cy + lineGap / 2 - i * lineGap,
+      size,
+      font,
+      color: WMARK,
+      opacity: 0.35,
+      rotate: degrees(45),
+    });
+  });
+}
+
+function drawCoverBoxRows(
+  page: PDFPage,
+  x: number,
+  yTop: number,
+  width: number,
+  rows: { label: string; value: string }[],
+  boldFont: any,
+  regFont: any,
+): number {
+  const rowHeight = 16;
+  const padding = 10;
+  const height = rows.length * rowHeight + padding * 2;
+
+  page.drawRectangle({
+    x,
+    y: yTop - height,
+    width,
+    height,
+    borderColor: BOX_BORDER,
+    borderWidth: 0.75,
+    color: BOX_FILL,
+  });
+
+  let rowY = yTop - padding - 11;
+  for (const row of rows) {
+    page.drawText(row.label, {
+      x: x + 10,
+      y: rowY,
+      size: 8,
+      font: boldFont,
+      color: DGRAY,
+    });
+    page.drawText(row.value, {
+      x: x + 132,
+      y: rowY,
+      size: 8,
+      font: regFont,
+      color: DGRAY,
+    });
+    rowY -= rowHeight;
+  }
+
+  return yTop - height - 14;
+}
+
+function drawCoverPage(
+  doc: PDFDocument,
+  app: AppData,
+  pages: PageMeta[],
+  boldFont: any,
+  regFont: any,
+  fmt: (v: unknown) => string,
+  fmtMoney: (v: unknown) => string,
+) {
+  const page = doc.addPage([PAGE_W, PAGE_H]);
+  pages.push({ page, pageNum: pages.length + 1 });
+  drawWatermark(page, regFont);
+
+  const boxW = PAGE_W - MARGIN * 2;
+  const submissionDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  let y = PAGE_H - 52;
+
+  page.drawText('DIDACT CAPITAL', {
+    x: MARGIN,
+    y,
+    size: 28,
+    font: boldFont,
+    color: NAVY,
+  });
+  y -= 26;
+  page.drawText('Deal Submission Package', {
+    x: MARGIN,
+    y,
+    size: 12,
+    font: regFont,
+    color: TEAL,
+  });
+  y -= 14;
+  page.drawLine({
+    start: { x: MARGIN, y },
+    end: { x: PAGE_W - MARGIN, y },
+    thickness: 1,
+    color: TEAL,
+  });
+  y -= 22;
+
+  y = drawCoverBoxRows(page, MARGIN, y, boxW, [
+    { label: 'Submitted by:', value: 'Didact Capital (Surplus Savvy LLC)' },
+    { label: 'ISO Contact:', value: 'Leonard Curry' },
+    { label: 'Email:', value: 'curry@didactcapital.fund' },
+    { label: 'Phone:', value: '(216) 450-2766' },
+    { label: 'Website:', value: 'didactcapital.fund' },
+    { label: 'Submission Date:', value: submissionDate },
+    { label: 'Application ID:', value: fmt(app.id) },
+  ], boldFont, regFont);
+
+  const merchantName = app.business_dba
+    ? `${fmt(app.business_legal_name)} (DBA: ${fmt(app.business_dba)})`
+    : fmt(app.business_legal_name);
+
+  y = drawCoverBoxRows(page, MARGIN, y, boxW, [
+    { label: 'Merchant:', value: merchantName },
+    {
+      label: 'Owner:',
+      value: `${fmt(app.owner_first_name)} ${fmt(app.owner_last_name)}`,
+    },
+    { label: 'Industry:', value: fmt(app.industry_sic) },
+    { label: 'Requested Amount:', value: fmtMoney(app.amount_requested) },
+    { label: 'Monthly Revenue:', value: fmtMoney(app.gross_monthly_sales) },
+    { label: 'Time in Business:', value: fmt(app.business_start_date) },
+  ], boldFont, regFont);
+
+  y -= 6;
+  const legalText =
+    'This document is the exclusive property of Didact Capital (Surplus Savvy LLC). ' +
+    'It has been prepared for the sole use of the named recipient lender for underwriting purposes only. ' +
+    'Unauthorized reproduction, distribution, or re-brokering of this deal package is strictly prohibited ' +
+    'and constitutes a violation of our ISO agreement and applicable law.';
+  const legalLines = wrapText(legalText, boxW - 16, regFont, 7);
+  legalLines.forEach((line) => {
+    page.drawText(line, {
+      x: MARGIN,
+      y,
+      size: 7,
+      font: regFont,
+      color: DGRAY,
+    });
+    y -= 10;
+  });
+
+  y -= 8;
+  page.drawText('Merchant Authorization', {
+    x: MARGIN,
+    y,
+    size: 9,
+    font: boldFont,
+    color: NAVY,
+  });
+  y -= 14;
+
+  const authText =
+    'The merchant named above has exclusively authorized Didact Capital (Surplus Savvy LLC) ' +
+    'to submit this application to funding sources on their behalf. The merchant has not authorized ' +
+    'any other broker or ISO to submit this application simultaneously. Unauthorized re-brokering ' +
+    'is a violation of this authorization.';
+  const authLines = wrapText(authText, boxW - 16, regFont, 7.5);
+  authLines.forEach((line) => {
+    page.drawText(line, {
+      x: MARGIN,
+      y,
+      size: 7.5,
+      font: regFont,
+      color: DGRAY,
+    });
+    y -= 10;
+  });
+
+  y -= 8;
+  page.drawText('Merchant Signature: _________________________   Date: _________', {
+    x: MARGIN,
+    y,
+    size: 8,
+    font: regFont,
+    color: DGRAY,
+  });
+  y -= 14;
+  page.drawText('Printed Name: _________________________', {
+    x: MARGIN,
+    y,
+    size: 8,
+    font: regFont,
+    color: DGRAY,
+  });
 }
 
 function drawFooter(
@@ -109,6 +339,7 @@ export async function generateLenderPDF(
   function newPage(): PDFPage {
     const p = doc.addPage([PAGE_W, PAGE_H]);
     pages.push({ page: p, pageNum: pages.length + 1 });
+    drawWatermark(p, regFont);
     currentPage = p;
     y = PAGE_H - 50;
     return p;
@@ -117,6 +348,16 @@ export async function generateLenderPDF(
   function ensureSpace(needed: number) {
     if (y - needed < 55) newPage();
   }
+
+  const fmt      = (v: any) => (v === null || v === undefined || v === '') ? '—' : String(v);
+  const fmtBool  = (v: any) => v === true  || v === 'true'  ? 'Yes' : v === false || v === 'false' ? 'No' : '—';
+  const fmtMoney = (v: any) => {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(String(v).replace(/[^0-9.-]/g, ''));
+    return isNaN(n) ? fmt(v) : `$${n.toLocaleString()}`;
+  };
+
+  drawCoverPage(doc, app, pages, boldFont, regFont, fmt, fmtMoney);
 
   newPage();
 
@@ -143,14 +384,6 @@ export async function generateLenderPDF(
   });
 
   y = PAGE_H - 100;
-
-  const fmt      = (v: any) => (v === null || v === undefined || v === '') ? '—' : String(v);
-  const fmtBool  = (v: any) => v === true  || v === 'true'  ? 'Yes' : v === false || v === 'false' ? 'No' : '—';
-  const fmtMoney = (v: any) => {
-    if (v === null || v === undefined || v === '') return '—';
-    const n = Number(String(v).replace(/[^0-9.-]/g, ''));
-    return isNaN(n) ? fmt(v) : `$${n.toLocaleString()}`;
-  };
 
   function addSection(title: string) {
     ensureSpace(38);
@@ -331,5 +564,8 @@ export async function generateLenderPDF(
     drawFooter(page, pageNum, totalPages, regFont, fmt(app.id));
   }
 
+  // Watermarks are drawn at page creation (cover + newPage) so they sit behind all content.
+
   return doc.save();
 }
+
