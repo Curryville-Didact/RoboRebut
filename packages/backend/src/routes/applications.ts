@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { requireRole } from "../plugins/rbac.js";
 
 const STORAGE_BUCKET = "didact-documents";
 
@@ -43,6 +44,7 @@ const FIELD_MAP: Record<string, string> = {
   ownerZip: "owner_zip",
   ownerDob: "owner_dob",
   ownerSsnLast4: "owner_ssn_last4",
+  ownerSsn: "owner_ssn",
   ownerMobilePhone: "owner_phone",
   coFirstName: "coowner_first_name",
   coLastName: "coowner_last_name",
@@ -51,6 +53,7 @@ const FIELD_MAP: Record<string, string> = {
   coAddress: "coowner_address",
   coDob: "coowner_dob",
   coSsnLast4: "coowner_ssn_last4",
+  coownerSsn: "coowner_ssn",
   signatureName: "signature_name",
   authAgreed: "signature_agreed",
 };
@@ -93,7 +96,7 @@ export async function applicationsRoutes(app: FastifyInstance): Promise<void> {
       }
       const { data, error } = await app.supabase
         .from("applications")
-        .select("id, business_legal_name, business_dba, owner_first_name, owner_last_name, business_phone, amount_requested, gross_monthly_sales, industry_sic, entity_type, status, created_at")
+        .select("id, business_legal_name, business_dba, owner_first_name, owner_last_name, owner_ssn_last4, business_phone, amount_requested, gross_monthly_sales, industry_sic, entity_type, status, created_at")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -215,6 +218,39 @@ export async function applicationsRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(500).send({ error: "Failed to save application" });
     }
   });
+
+  app.get(
+    "/api/applications/:id/ssn",
+    {
+      preHandler: [app.authenticate, requireRole("FOUNDER", "ADMIN")],
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      console.log(
+        `[applications] SSN reveal access id=${id} at=${new Date().toISOString()}`
+      );
+
+      if (!app.supabase) {
+        return reply.status(503).send({ error: "Supabase unavailable" });
+      }
+
+      const { data, error } = await app.supabase
+        .from("applications")
+        .select("owner_ssn, coowner_ssn")
+        .eq("id", id)
+        .single();
+
+      if (error || !data) {
+        return reply.status(404).send({ error: "Application not found" });
+      }
+
+      return reply.send({
+        ownerSsn: data.owner_ssn ?? null,
+        coownerSsn: data.coowner_ssn ?? null,
+      });
+    }
+  );
 
   app.get("/api/applications/:id/export", async (request, reply) => {
     try {

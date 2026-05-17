@@ -251,6 +251,7 @@ export async function generateLenderPDF(
   addRow('Ownership %',  fmt(app.owner_percentage));
   addRow('Address',      [app.owner_address, app.owner_city, app.owner_state, app.owner_zip].filter(Boolean).join(', '), true);
   addRow('DOB',          fmt(app.owner_dob));
+  // Full SSN stored in Supabase owner_ssn column — never exposed in PDF
   addRow('SSN (last 4)', fmt(app.owner_ssn_last4), true);
   addRow('Phone',        fmt(app.owner_phone));
   gap();
