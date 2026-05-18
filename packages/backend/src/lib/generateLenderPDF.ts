@@ -101,7 +101,7 @@ function drawWatermark(page: PDFPage, font: any) {
       size,
       font,
       color: WMARK,
-      opacity: 0.15,
+      opacity: 0.22,
       rotate: degrees(45),
     });
   });

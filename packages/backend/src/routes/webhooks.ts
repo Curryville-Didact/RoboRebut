@@ -64,9 +64,11 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.post('/api/webhooks/twilio/sms', async (request, reply) => {
     const body = request.body as any
     const from = body.From as string
-    const msgBody = (body.Body as string || '').trim().toUpperCase()
+    const to = body.To as string
+    const smsBody = (body.Body as string || '').trim()
+    const msgBody = smsBody.toUpperCase()
 
-    console.log(`Inbound SMS from ${from}: ${msgBody}`)
+    console.log('Inbound SMS:', { from, to, body: smsBody })
 
     const { createClient } = await import('@supabase/supabase-js')
     const supabase = createClient(
